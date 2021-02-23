@@ -203,29 +203,33 @@ module.exports = {
                         }
                     });
                 },
-                // if there is no image file, what to do
                 _: (cb) => {
-                    fs.readFile(imagesFile, "utf8", (err, data) => {
-                        if (err) cb();
+                    fs.stat(imagesFile, (err, stats) => {
+                        if (err) cb(null)
                         else {
-                            const imageLinks = data.split('\n');
-                            imageLinks.pop(); // in order to manipulate data so that it does not contain final \n character
-                            (function downloadImage(imagePath) {
-                                if (!imagePath) {
-                                    fs.unlink(imagesFile, (err) => {
-                                        if (err) cb(err)
-                                        else cb(null)
-                                    });
-                                } else {
-                                    const imageName = imagePath.split('/').pop();
-                                    s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
-                                        if (err) cb(err)
-                                        else downloadImage(imageLinks.shift())
-                                    })
+                            fs.readFile(imagesFile, "utf8", (err, data) => {
+                                if (err) cb(err);
+                                else {
+                                    const imageLinks = data.split('\n');
+                                    imageLinks.pop(); // in order to manipulate data so that it does not contain final \n character
+                                    (function downloadImage(imagePath) {
+                                        if (!imagePath) {
+                                            fs.unlink(imagesFile, (err) => {
+                                                if (err) cb(err)
+                                                else cb(null)
+                                            });
+                                        } else {
+                                            const imageName = imagePath.split('/').pop();
+                                            s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
+                                                if (err) cb(err)
+                                                else downloadImage(imageLinks.shift())
+                                            })
+                                        }
+                                    })(imageLinks.shift())
                                 }
-                            })(imageLinks.shift())
+                            });
                         }
-                    });
+                    })
                 },
                 files: (cb) => fs.readdir(srcPath, cb),
             },
