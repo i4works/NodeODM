@@ -163,11 +163,20 @@ module.exports = {
     handleImageLinks: (req, res) => {
         if (req.body.images && req.body.images.length) {
             const srcPath = path.join("tmp", req.id);
-            req.body.images.forEach((i) => {
-                fs.appendFile(`${srcPath}/images.sg`, i + '\n', (err) => {
-                    if (err) res.json({ error: err })
-                })
-            })
+            async.series(
+                req.body.images.map((i) => {
+                    return (cb) => {
+                        fs.appendFile(`${srcPath}/images.sg`, i + '\n', (err) => {
+                            if (err) cb(err);
+                            else cb();
+                        })
+                    }
+                }),
+                (err) => {
+                    if (err) res.json({ error: err.message });
+                    else res.json({ success: true });
+                }
+            );
         }
     },
 
@@ -177,8 +186,8 @@ module.exports = {
         const imagesFile = path.join(srcPath, 'images.sg');
 
         async.series(
-            [
-                (cb) => {
+            {
+                body: (cb) => {
                     fs.readFile(bodyFile, "utf8", (err, data) => {
                         if (err) cb(err);
                         else {
@@ -194,38 +203,41 @@ module.exports = {
                         }
                     });
                 },
-                (cb) => {
+                // if there is no image file, what to do
+                _: (cb) => {
                     fs.readFile(imagesFile, "utf8", (err, data) => {
-                        if (err) cb(err);
+                        if (err) cb();
                         else {
-                            try {
-                                const imageLinks = data.split('\n');
-                                imageLinks.pop(); // in order to manipulate data so that it does not contain final \n character
-                                (function downloadImage(imagePath) {
-                                    if (!imagePath) {
-                                        fs.unlink(imagesFile, (err) => {
-                                            if (err) cb(err)
-                                            else cb(null)
-                                        });
-                                    } else {
-                                        const imageName = imagePath.split('/').pop();
-                                        s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
-                                            if (err) cb(err)
-                                            else downloadImage(imageLinks.shift())
-                                        })
-                                    }
-                                })(imageLinks.shift())
-                            } catch (e) {
-                                cb(new Error("Malformed images.txt file"));
-                            }
+                            const imageLinks = data.split('\n');
+                            imageLinks.pop(); // in order to manipulate data so that it does not contain final \n character
+                            (function downloadImage(imagePath) {
+                                if (!imagePath) {
+                                    fs.unlink(imagesFile, (err) => {
+                                        if (err) cb(err)
+                                        else cb(null)
+                                    });
+                                } else {
+                                    const imageName = imagePath.split('/').pop();
+                                    s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
+                                        if (err) cb(err)
+                                        else downloadImage(imageLinks.shift())
+                                    })
+                                }
+                            })(imageLinks.shift())
                         }
                     });
-                }
-            ],
-            (err, [body]) => {
+                },
+                files: (cb) => fs.readdir(srcPath, cb),
+            },
+            (err, { body, files }) => {
                 if (err) res.json({ error: err.message });
                 else {
                     req.body = body;
+                    req.files = files;
+
+                    if (req.files.length === 0) {
+                        req.error = "Need at least 1 file.";
+                    }
 
                     next();
                 }

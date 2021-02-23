@@ -260,7 +260,7 @@ app.post(
     authCheck,
     taskNew.getUUID,
     taskNew.handleCommit,
-    // taskNew.createTask
+    taskNew.createTask
 );
 
 /** @swagger
