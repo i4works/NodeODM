@@ -137,6 +137,7 @@ module.exports = class Task {
     static CreateFromSerialized(taskJson, done) {
         new Task(
             taskJson.uuid,
+            taskJson.projectId,
             taskJson.name,
             taskJson.options,
             taskJson.webhook,
@@ -757,6 +758,7 @@ module.exports = class Task {
     serialize() {
         return {
             uuid: this.uuid,
+            projectId: this.projectId,
             name: this.name,
             dateCreated: this.dateCreated,
             dateStarted: this.dateStarted,

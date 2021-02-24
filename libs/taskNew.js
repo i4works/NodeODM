@@ -32,6 +32,8 @@ const request = require("request");
 const ziputils = require("./ziputils");
 const { cancelJob } = require("node-schedule");
 
+const s3 = require('./S3');
+
 const download = function (uri, filename, callback) {
     request.head(uri, function (err, res, body) {
         if (err) callback(err);
@@ -43,7 +45,7 @@ const download = function (uri, filename, callback) {
     });
 };
 
-const removeDirectory = function (dir, cb = () => {}) {
+const removeDirectory = function (dir, cb = () => { }) {
     fs.stat(dir, (err, stats) => {
         if (!err && stats.isDirectory()) rmdir(dir, cb);
         // ignore errors, don't wait
@@ -60,8 +62,7 @@ const assureUniqueFilename = (dstPath, filename, cb) => {
             if (parts.length > 1) {
                 assureUniqueFilename(
                     dstPath,
-                    `${parts.slice(0, parts.length - 1).join(".")}_.${
-                        parts[parts.length - 1]
+                    `${parts.slice(0, parts.length - 1).join(".")}_.${parts[parts.length - 1]
                     }`,
                     cb
                 );
@@ -159,13 +160,24 @@ module.exports = {
         }
     },
 
+    handleImageLinks: (req, res) => {
+        if (req.body.images && req.body.images.length) {
+            const srcPath = path.join("tmp", req.id);
+            fs.appendFile(`${srcPath}/images.sg`, req.body.images.join('\n'), (err) => {
+                if (err) res.json({ error: err.message });
+                else res.json({ success: true });
+            });
+        }
+    },
+
     handleCommit: (req, res, next) => {
         const srcPath = path.join("tmp", req.id);
         const bodyFile = path.join(srcPath, "body.json");
+        const imagesFile = path.join(srcPath, 'images.sg');
 
         async.series(
-            [
-                (cb) => {
+            {
+                body: (cb) => {
                     fs.readFile(bodyFile, "utf8", (err, data) => {
                         if (err) cb(err);
                         else {
@@ -181,9 +193,36 @@ module.exports = {
                         }
                     });
                 },
-                (cb) => fs.readdir(srcPath, cb),
-            ],
-            (err, [body, files]) => {
+                _: (cb) => {
+                    fs.stat(imagesFile, (err, stats) => {
+                        if (err) cb(null);
+                        else {
+                            fs.readFile(imagesFile, "utf8", (err, data) => {
+                                if (err) cb(err);
+                                else {
+                                    const imageLinks = data.split('\n');
+                                    (function downloadImage(imagePath) {
+                                        if (!imagePath) {
+                                            fs.unlink(imagesFile, (err) => {
+                                                if (err) cb(err)
+                                                else cb(null)
+                                            });
+                                        } else {
+                                            const imageName = imagePath.split('/').pop();
+                                            s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
+                                                if (err) cb(err)
+                                                else downloadImage(imageLinks.shift())
+                                            })
+                                        }
+                                    })(imageLinks.shift())
+                                }
+                            });
+                        }
+                    })
+                },
+                files: (cb) => fs.readdir(srcPath, cb),
+            },
+            (err, { body, files }) => {
                 if (err) res.json({ error: err.message });
                 else {
                     req.body = body;
@@ -192,6 +231,7 @@ module.exports = {
                     if (req.files.length === 0) {
                         req.error = "Need at least 1 file.";
                     }
+
                     next();
                 }
             }
@@ -200,7 +240,7 @@ module.exports = {
 
     handleInit: (req, res) => {
         req.body = req.body || {};
-    
+
         if (!req.body.projectId) {
             res.json({ error: 'noProjectId' }); // error can be changed accordingly
             return;
