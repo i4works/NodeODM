@@ -163,20 +163,10 @@ module.exports = {
     handleImageLinks: (req, res) => {
         if (req.body.images && req.body.images.length) {
             const srcPath = path.join("tmp", req.id);
-            async.series(
-                req.body.images.map((i) => {
-                    return (cb) => {
-                        fs.appendFile(`${srcPath}/images.sg`, i + '\n', (err) => {
-                            if (err) cb(err);
-                            else cb();
-                        })
-                    }
-                }),
-                (err) => {
-                    if (err) res.json({ error: err.message });
-                    else res.json({ success: true });
-                }
-            );
+            fs.appendFile(`${srcPath}/images.sg`, req.body.images.join('\n'), (err) => {
+                if (err) res.json({ error: err.message });
+                else res.json({ success: true });
+            });
         }
     },
 
@@ -194,8 +184,8 @@ module.exports = {
                             try {
                                 const body = JSON.parse(data);
                                 fs.unlink(bodyFile, (err) => {
-                                    if (err) cb(err)
-                                    else cb(null, body)
+                                    if (err) cb(err);
+                                    else cb(null, body);
                                 });
                             } catch (e) {
                                 cb(new Error("Malformed body.json"));
@@ -205,13 +195,12 @@ module.exports = {
                 },
                 _: (cb) => {
                     fs.stat(imagesFile, (err, stats) => {
-                        if (err) cb(null)
+                        if (err) cb(null);
                         else {
                             fs.readFile(imagesFile, "utf8", (err, data) => {
                                 if (err) cb(err);
                                 else {
                                     const imageLinks = data.split('\n');
-                                    imageLinks.pop(); // in order to manipulate data so that it does not contain final \n character
                                     (function downloadImage(imagePath) {
                                         if (!imagePath) {
                                             fs.unlink(imagesFile, (err) => {
