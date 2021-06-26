@@ -116,4 +116,45 @@ module.exports = {
         ["destination", "file"],
         null,
         false)
+
+    runPotreeConverter: makeRunner("PotreeConverter", function (options) {
+        return [options.input, "-o", options.outDir];
+    }, ["input", "outDir"],
+        null,
+        false),
+
+    runGenerateCog: makeRunner("generate-cog.py", function (options) {
+        const params = ["-i", options.inputPath, "-p", options.outputPath];
+
+        params.push("-l"); // use local
+
+        return params;
+    }, ["inputPath", "outputPath"],
+       null, 
+       false),
+
+    runIfcConverter: makeRunner("IfcConvert", function (options) {
+        return [options.inputFile, options.outputFile];
+    }, ["inputFile", "outputFile"], 
+       null, 
+       false),
+
+    runNxsBuild: makeRunner("nxsbuild", function (options) {
+        return [
+            options.inputOBJFile,
+            "-m",
+            options.inputMTLFile,
+            "-o",
+            options.outputFile,
+            "-c",
+        ];
+    }, ["inputOBJFile", "inputMTLFile", "outputFile"], 
+       null, 
+       false),
+
+    runNxsCompress: makeRunner("nxscompress", function (options) {
+        return [options.inputFile, "-o", options.outputFile];
+    }, ["inputFile", "outputFile"], 
+       null, 
+       false)
 };

@@ -447,6 +447,69 @@ module.exports = class Task {
                 };
             };
 
+            const runSGPostprocess = (type) => {
+                let opts;
+                let runner;
+
+                switch (type) {
+                    case 'pointcloud':
+                        opts = {
+                            input: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
+                            outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
+                        };
+                        runner = processRunner.runPotreeConverter;
+                        break;
+                    case 'orthophoto':
+                        opts = {
+                            inputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif'),
+                            outputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif')
+                        };
+                        runner = processRunner.runGenerateCog;
+                        break;
+                    case 'mesh_initial':
+                        opts = {
+                            inputOBJFile: path.join(this.getProjectFolderPath(), 'odm_meshing', 'odm_textured_model_geo.obj'),
+                            inputMTLFile: path.join(this.getProjectFolderPath(), 'odm_meshing', 'odm_textured_model_geo.mtl'),
+                            outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs')
+                        };
+                        runner = processRunner.runNxsBuild;
+                        break;
+                    case 'mesh_post':
+                        opts = {
+                            inputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs'),
+                            outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxz')
+                        };
+                        runner = processRunner.runNxsCompress;
+                        break;
+                    default:
+                        return (done) => done();
+                }
+                 
+                return (done) => {
+                    this.runningProcesses.push(
+                        runner(opts,
+                            (err, code, _) => {
+                                if (err) done(err);
+                                else {
+                                    if (code === 0) {
+                                        this.updateProgress(93);
+                                        done();
+                                    } else
+                                        done(
+                                            new Error(
+                                                `Process exited with code ${code}`
+                                            )
+                                        );
+                                }
+                            },
+                            (output) => {
+                                this.output.push(output);
+                            }
+                        )
+                    )
+                }
+            }
+
             const saveTaskOutput = (destination) => {
                 return (done) => {
                     fs.writeFile(destination, this.output.join("\n"), (err) => {
@@ -527,7 +590,25 @@ module.exports = class Task {
                 }
             }
 
-            if (!this.skipPostProcessing) tasks.push(runPostProcessingScript());
+            if (!this.skipPostProcessing && !this.projectId) tasks.push(runPostProcessingScript());
+
+            // Sahagozu specific postProcesses
+
+            if (this.projectId && allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
+                // pointcloud output is wanted, run necessary post processing
+                tasks.push(runSGPostprocess('pointcloud'));
+            }
+
+            if (this.projectId && allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
+                // orthophoto output is wanted, run necessary post processing
+                tasks.push(runSGPostprocess('orthophoto'));
+            }
+
+            if (this.projectId && allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')){
+                // mesh output is wanted, run necessary post processing
+                tasks.push(runSGPostprocess('mesh_initial'));
+                tasks.push(runSGPostprocess('mesh_post'));
+            }
 
             const taskOutputFile = path.join(
                 this.getProjectFolderPath(),
@@ -538,30 +619,97 @@ module.exports = class Task {
             const archiveFunc = config.has7z
                 ? createZipArchive
                 : createZipArchiveLegacy;
-            tasks.push(archiveFunc("all.zip", allPaths));
+            if (!this.projectId)
+                tasks.push(archiveFunc("all.zip", allPaths));
 
             // Upload to S3 all paths + all.zip file (if config says so)
             if (S3.enabled()) {
-                tasks.push((done) => {
-                    let s3Paths;
-                    if (config.s3UploadEverything) {
-                        s3Paths = ["all.zip"].concat(allPaths);
-                    } else {
-                        s3Paths = ["all.zip"];
+                if (!this.projectId) {
+                    // regular s3 upload 
+                    tasks.push((done) => {
+                        let s3Paths;
+                        if (config.s3UploadEverything) {
+                            s3Paths = ["all.zip"].concat(allPaths);
+                        } else {
+                            s3Paths = ["all.zip"];
+                        }
+
+                        S3.uploadPaths(
+                            this.getProjectFolderPath(),
+                            config.s3Bucket,
+                            this.uuid,
+                            s3Paths,
+                            (err) => {
+                                if (!err) this.output.push("Done uploading to S3!");
+                                done(err);
+                            },
+                            (output) => this.output.push(output)
+                        );
+                    });
+                } else {
+                    // sg s3 uplaod
+                    if (allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/pointcloud/${this.uuid}_pointcloud.laz`,
+                                path.join(this.getProjectFolderPath(),'odm_georeferencing','odm_georeferenced_model.laz'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded pointcloud, continuing')
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            )
+                        });
+                        tasks.push((done) => {
+                            s3.uploadPaths(
+                                this.getProjectFolderPath(),
+                                config.s3Bucket,
+                                `project/${this.projectId}/process/${this.uuid}`,
+                                ['potree_pointcloud'],
+                                (err) => {
+                                    if (!err) this.output.push('Done uploading potree_pointcloud, continuing');
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            )
+                        });
                     }
 
-                    S3.uploadPaths(
-                        this.getProjectFolderPath(),
-                        config.s3Bucket,
-                        this.uuid,
-                        s3Paths,
-                        (err) => {
-                            if (!err) this.output.push("Done uploading to S3!");
-                            done(err);
-                        },
-                        (output) => this.output.push(output)
-                    );
-                });
+                    if (allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/orthophoto/${this.uuid}_orthophoto-cog.tif`,
+                                path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto.tif'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded orthophoto, continuing')
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            )
+                        });
+                    }
+
+                    if (allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
+                        tasks.push((done) => {
+                            // TODO upload mesh files
+                            // Find a way to create single texture file
+                        });
+                        tasks.push((done) => {
+                            s3.uploadPaths(
+                                this.getProjectFolderPath(),
+                                config.s3Bucket,
+                                `project/${this.projectId}/process/${this.uuid}`,
+                                ['nexus'],
+                                (err) => {
+                                    if (!err) this.output.push('Done uploading to S3!!');
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            )
+                            
+                        });
+                    }
+                }
             }
 
             async.series(tasks, (err) => {

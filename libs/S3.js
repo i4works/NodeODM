@@ -223,6 +223,92 @@ module.exports = {
         });
     },
 
+    // @param key {String} destination key in the bucket
+    // @param path {String} file path
+    // @param cb {Function callback
+    uploadSingle: (key, path, cb, onOutput) => {
+        if (!s3) throw new Error("S3 is not initialized");
+
+        const PARALLEL_UPLOADS = 4; // Upload these many files at the same time
+        const MAX_RETRIES = 6;
+        const MIN_PART_SIZE = 5 * 1024 * 1024;
+
+        // Get available memory, as on low-powered machines
+        // we might not be able to upload many large chunks at once
+        si.mem((memory) => {
+            let concurrency = 10; // Upload these many parts per file at the same time
+
+            let progress = 0;
+            let retries = 0;
+
+            let partSize = 100 * 1024 * 1024;
+            let memoryRequirement = partSize * concurrency * PARALLEL_UPLOADS; // Conservative
+
+            // Try reducing concurrency first
+            while (memoryRequirement > memory.available && concurrency > 1) {
+                concurrency--;
+                memoryRequirement = partSize * concurrency * PARALLEL_UPLOADS;
+            }
+
+            // Try reducing partSize afterwards
+            while (
+                memoryRequirement > memory.available &&
+                partSize > MIN_PART_SIZE
+            ) {
+                partSize = Math.max(MIN_PART_SIZE, Math.floor(partSize * 0.8));
+                memoryRequirement = partSize * concurrency * PARALLEL_UPLOADS;
+            }
+
+            function upload() {
+                s3.upload(
+                    {
+                        Bucket: config.s3Bucket,
+                        Key: key,
+                        Body: fs.createReadStream(path),
+                        ACL: config.s3ACL,
+                    },
+                    { partSize, queueSize: concurrency },
+                    (err) => {
+                        if (err) {
+                            logger.debug(err);
+                            const msg = `Cannot upload file to S3: ${err.code}, retrying... ${retries}`;
+                            if (onOutput) onOutput(msg);
+                            if (retries < MAX_RETRIES) {
+                                retries++;
+                                concurrency = Math.max(
+                                    1,
+                                    Math.floor(concurrency * 0.66)
+                                );
+                                progress = 0;
+
+                                setTimeout(() => {
+                                    upload();
+                                }, 2 ** file.retries * 1000);
+                            } else {
+                                cb(new Error(msg));
+                            }
+                        } else cb();
+                    }
+                ).on("httpUploadProgress", (p) => {
+                    const perc = Math.round((p.loaded / p.total) * 100);
+                    if (perc % 5 == 0 && progress < perc) {
+                        progress = perc;
+                        if (onOutput) {
+                            onOutput(
+                                `Uploading ${path}... ${progress}%`
+                            );
+                            if (progress == 100) {
+                                onOutput(
+                                    `Finalizing ${path} upload, this could take a bit...`
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    },
+
     // @param key {String} Source key in the bucket
     // @param dest {String} Destination file path
     // @param cb {Function} Callback
