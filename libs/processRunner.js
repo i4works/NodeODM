@@ -115,7 +115,7 @@ module.exports = {
         },
         ["destination", "file"],
         null,
-        false)
+        false),
 
     runPotreeConverter: makeRunner("PotreeConverter", function (options) {
         return [options.input, "-o", options.outDir];
