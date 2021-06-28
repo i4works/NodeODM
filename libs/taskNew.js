@@ -201,20 +201,9 @@ module.exports = {
                                 if (err) cb(err);
                                 else {
                                     const imageLinks = data.split('\n');
-                                    (function downloadImage(imagePath) {
-                                        if (!imagePath) {
-                                            fs.unlink(imagesFile, (err) => {
-                                                if (err) cb(err)
-                                                else cb(null)
-                                            });
-                                        } else {
-                                            const imageName = imagePath.split('/').pop();
-                                            s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
-                                                if (err) cb(err)
-                                                else downloadImage(imageLinks.shift())
-                                            })
-                                        }
-                                    })(imageLinks.shift())
+
+                                    req.body.imageLinks = imageLinks;
+                                    cb(null);
                                 }
                             });
                         }
@@ -317,7 +306,7 @@ module.exports = {
                 else {
                     fs.readdir(destImagesPath, (err, files) => {
                         if (err) cb(err);
-                        else if (files.length > config.maxImages)
+                        else if ((files.length + (req.body.imageLinks && req.body.imageLinks.length)) > config.maxImages )
                             cb(
                                 new Error(
                                     `${files.length} images uploaded, but this node can only process up to ${config.maxImages}.`
@@ -516,6 +505,7 @@ module.exports = {
                         new Task(
                             req.id,
                             req.body.projectId,
+                            req.body.imageLinks || [],
                             req.body.name,
                             req.body.options,
                             req.body.webhook,

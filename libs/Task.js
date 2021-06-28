@@ -39,6 +39,7 @@ module.exports = class Task {
     constructor(
         uuid,
         projectId,
+        imageLinks = [],
         name,
         options = [],
         webhook = null,
@@ -54,6 +55,7 @@ module.exports = class Task {
 
         this.uuid = uuid;
         this.projectId = projectId;
+        this.imageLinks = imageLinks
         this.name = name !== "" ? name : "Task of " + new Date().toISOString();
         this.dateCreated = isNaN(parseInt(dateCreated))
             ? new Date().getTime()
@@ -138,6 +140,7 @@ module.exports = class Task {
         new Task(
             taskJson.uuid,
             taskJson.projectId,
+            taskJson.imageLinks,
             taskJson.name,
             taskJson.options,
             taskJson.webhook,
@@ -462,7 +465,7 @@ module.exports = class Task {
                     case 'orthophoto':
                         opts = {
                             inputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif'),
-                            outputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif')
+                            outputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto-cog.tif')
                         };
                         runner = processRunner.runGenerateCog;
                         break;
@@ -661,7 +664,7 @@ module.exports = class Task {
                             )
                         });
                         tasks.push((done) => {
-                            s3.uploadPaths(
+                            S3.uploadPaths(
                                 this.getProjectFolderPath(),
                                 config.s3Bucket,
                                 `project/${this.projectId}/process/${this.uuid}`,
@@ -679,7 +682,7 @@ module.exports = class Task {
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/orthophoto/${this.uuid}_orthophoto-cog.tif`,
-                                path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto.tif'),
+                                path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto-cog.tif'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded orthophoto, continuing')
                                     done(err);
@@ -692,10 +695,11 @@ module.exports = class Task {
                     if (allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
                         tasks.push((done) => {
                             // TODO upload mesh files
-                            // Find a way to create single texture file
+                            //  zip and upload obj/mtl/png
+                            done();
                         });
                         tasks.push((done) => {
-                            s3.uploadPaths(
+                            S3.uploadPaths(
                                 this.getProjectFolderPath(),
                                 config.s3Bucket,
                                 `project/${this.projectId}/process/${this.uuid}`,
@@ -734,6 +738,22 @@ module.exports = class Task {
             }, {});
 
             runnerOptions["project-path"] = fs.realpathSync(Directories.data);
+
+            // TODO if this.imageLinks.length download images
+            // (function downloadImage(imagePath) {
+            //     if (!imagePath) {
+            //         fs.unlink(imagesFile, (err) => {
+            //             if (err) cb(err)
+            //             else cb(null)
+            //         });
+            //     } else {
+            //         const imageName = imagePath.split('/').pop();
+            //         s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
+            //             if (err) cb(err)
+            //             else downloadImage(imageLinks.shift())
+            //         })
+            //     }
+            // })(imageLinks.shift())
 
             if (this.gcpFiles.length > 0) {
                 runnerOptions.gcp = fs.realpathSync(

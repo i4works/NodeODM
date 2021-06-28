@@ -306,6 +306,8 @@ module.exports = {
                     }
                 });
             }
+
+            upload();
         });
     },
 
