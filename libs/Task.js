@@ -32,6 +32,8 @@ const S3 = require("./S3");
 const request = require("request");
 const utils = require("./utils");
 const archiver = require("archiver");
+const stream = require('stream');
+const readline = require('readline');
 
 const statusCodes = require("./statusCodes");
 
@@ -189,6 +191,8 @@ module.exports = class Task {
     getAssetsArchivePath(filename) {
         if (filename == "all.zip") {
             // OK, do nothing
+        } else if (filename == "mesh.zip") {
+            // Also OK, do nothing
         } else {
             return false; // Invalid
         }
@@ -305,7 +309,7 @@ module.exports = class Task {
 
                     const pathsToArchive = [];
                     files.forEach((f) => {
-                        if (fs.existsSync(path.join(sourcePath, f))) {
+                        if (fs.existsSync(path.resolve(sourcePath, f))) {
                             pathsToArchive.push(f);
                         }
                     });
@@ -471,8 +475,8 @@ module.exports = class Task {
                         break;
                     case 'mesh_initial':
                         opts = {
-                            inputOBJFile: path.join(this.getProjectFolderPath(), 'odm_meshing', 'odm_textured_model_geo.obj'),
-                            inputMTLFile: path.join(this.getProjectFolderPath(), 'odm_meshing', 'odm_textured_model_geo.mtl'),
+                            inputOBJFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.obj'),
+                            inputMTLFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.mtl'),
                             outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs')
                         };
                         runner = processRunner.runNxsBuild;
@@ -609,6 +613,9 @@ module.exports = class Task {
 
             if (this.projectId && allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')){
                 // mesh output is wanted, run necessary post processing
+                if (!fs.existsSync(path.join(this.getProjectFolderPath(), 'nexus'))) {
+                    fs.mkdirSync(path.join(this.getProjectFolderPath(), 'nexus'));
+                }
                 tasks.push(runSGPostprocess('mesh_initial'));
                 tasks.push(runSGPostprocess('mesh_post'));
             }
@@ -684,7 +691,7 @@ module.exports = class Task {
                                 `project/${this.projectId}/process/${this.uuid}/orthophoto/${this.uuid}_orthophoto-cog.tif`,
                                 path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto-cog.tif'),
                                 (err) => {
-                                    if (!err) this.output.push('Uploaded orthophoto, continuing')
+                                    if (!err) this.output.push('Uploaded orthophoto, continuing');
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -693,11 +700,66 @@ module.exports = class Task {
                     }
 
                     if (allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
-                        tasks.push((done) => {
-                            // TODO upload mesh files
-                            //  zip and upload obj/mtl/png
-                            done();
+                        const meshCanditatePaths = fs.readdirSync(path.join(this.getProjectFolderPath(), 'odm_texturing'));
+                        const meshPaths = meshCanditatePaths.filter(p => {
+                            if (!p.includes('geo')) 
+                                return false;
+
+                            if (p.substr(-4) === 'conf')
+                                return false;
+
+                            return true;
+                        }).map(e => path.join(this.getProjectFolderPath(), 'odm_texturing', e));
+
+
+                        tasks.push(done => {
+                            const mtlPath = path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.mtl');
+                            const mtlFile = fs.readFileSync(mtlPath, { encoding: 'utf-8'});
+
+                            fs.writeFileSync(mtlPath, mtlFile.replace(/odm_textured_model_geo/g, 'mesh', ));
+
+                            const modifiedMeshPaths = meshPaths.map(f => { 
+                                const newPath = f.replace('odm_textured_model_geo', 'mesh');
+                                fs.renameSync(f, newPath);
+
+                                return path.resolve(process.cwd(), newPath);
+                            });
+
+                            const objPath = path.join(this.getProjectFolderPath(), 'odm_texturing', 'mesh.obj');
+                            const rs = fs.createReadStream(objPath);
+                            const ws = fs.createWriteStream(objPath + '.tmp');
+
+                            const rl = readline.createInterface(rs, stream);
+
+                            rl.on('line', l => {
+                                if (l.substr(0, 6) === 'mtllib') {
+                                    return ws.write('mtllib mesh.mtl\n');
+                                }
+
+                                ws.write(l + '\n');
+                            });
+
+                            rl.on('close', () => {
+                                ws.end(() => {
+                                    fs.unlinkSync(objPath);
+                                    fs.renameSync(objPath + '.tmp', objPath);
+                                    archiveFunc("mesh.zip", modifiedMeshPaths)(done);
+                                });
+                            });
                         });
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/mesh/mesh.zip`,
+                                this.getAssetsArchivePath('mesh.zip'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded mesh.zip, continuing');
+                                    done (err);
+                                },
+                                (output) => this.output.push(output)
+                            )
+                        });
+
                         tasks.push((done) => {
                             S3.uploadPaths(
                                 this.getProjectFolderPath(),
@@ -739,78 +801,82 @@ module.exports = class Task {
 
             runnerOptions["project-path"] = fs.realpathSync(Directories.data);
 
-            // TODO if this.imageLinks.length download images
-            // (function downloadImage(imagePath) {
-            //     if (!imagePath) {
-            //         fs.unlink(imagesFile, (err) => {
-            //             if (err) cb(err)
-            //             else cb(null)
-            //         });
-            //     } else {
-            //         const imageName = imagePath.split('/').pop();
-            //         s3.downloadPath(imagePath, `${srcPath}/${imageName}`, (err) => {
-            //             if (err) cb(err)
-            //             else downloadImage(imageLinks.shift())
-            //         })
-            //     }
-            // })(imageLinks.shift())
+            const downloadTasks = this.imageLinks.length ? this.imageLinks.map(dlLink => cb => {
+                const imageName = dlLink.split('/').pop();
+                const p = path.join(this.getImagesFolderPath(), imageName);
+                this.output.push(`downloading ${p} ...`);
+                S3.downloadPath(dlLink, p, (err) => {
+                    if (err) cb(err);
+                    else cb(null)
+                }) 
+            }) : [cb => cb(null)];
 
-            if (this.gcpFiles.length > 0) {
-                runnerOptions.gcp = fs.realpathSync(
-                    path.join(this.getGcpFolderPath(), this.gcpFiles[0])
-                );
-            }
-            if (this.geoFiles.length > 0) {
-                runnerOptions.geo = fs.realpathSync(
-                    path.join(this.getGcpFolderPath(), this.geoFiles[0])
-                );
-            }
-            if (this.imageGroupsFiles.length > 0) {
-                runnerOptions["split-image-groups"] = fs.realpathSync(
-                    path.join(this.getGcpFolderPath(), this.imageGroupsFiles[0])
-                );
-            }
-
-            this.runningProcesses.push(
-                odmRunner.run(
-                    runnerOptions,
-                    this.uuid,
-                    (err, code, signal) => {
-                        if (err) {
-                            this.setStatus(statusCodes.FAILED, {
-                                errorMessage: `Could not start process (${err.message})`,
-                            });
-                            finished(err);
-                        } else {
-                            // Don't evaluate if we caused the process to exit via SIGINT?
-                            if (this.status.code !== statusCodes.CANCELED) {
-                                if (code === 0) {
-                                    postProcess();
-                                } else {
-                                    this.setStatus(statusCodes.FAILED, {
-                                        errorMessage: `Process exited with code ${code}`,
-                                    });
-                                    finished();
-                                }
-                            } else {
-                                finished();
-                            }
-                        }
-                    },
-                    (output) => {
-                        // Replace console colors
-                        output = output.replace(/\x1b\[[0-9;]*m/g, "");
-
-                        // Split lines and trim
-                        output
-                            .trim()
-                            .split("\n")
-                            .forEach((line) => {
-                                this.output.push(line.trim());
-                            });
+            async.parallelLimit(downloadTasks, 4, (err) => {
+                if (err) {
+                    this.setStatus(statusCodes.FAILED, {
+                        errorMessage: `Could not download using imageLinks : (${err.message})`,
+                    });
+                    finished(err);
+                } else {
+                    // TODO update this.images
+                    if (this.gcpFiles.length > 0) {
+                        runnerOptions.gcp = fs.realpathSync(
+                            path.join(this.getGcpFolderPath(), this.gcpFiles[0])
+                        );
                     }
-                )
-            );
+                    if (this.geoFiles.length > 0) {
+                        runnerOptions.geo = fs.realpathSync(
+                            path.join(this.getGcpFolderPath(), this.geoFiles[0])
+                        );
+                    }
+                    if (this.imageGroupsFiles.length > 0) {
+                        runnerOptions["split-image-groups"] = fs.realpathSync(
+                            path.join(this.getGcpFolderPath(), this.imageGroupsFiles[0])
+                        );
+                    }
+
+                    this.runningProcesses.push(
+                        odmRunner.run(
+                            runnerOptions,
+                            this.uuid,
+                            (err, code, signal) => {
+                                if (err) {
+                                    this.setStatus(statusCodes.FAILED, {
+                                        errorMessage: `Could not start process (${err.message})`,
+                                    });
+                                    finished(err);
+                                } else {
+                                    // Don't evaluate if we caused the process to exit via SIGINT?
+                                    if (this.status.code !== statusCodes.CANCELED) {
+                                        if (code === 0) {
+                                            postProcess();
+                                        } else {
+                                            this.setStatus(statusCodes.FAILED, {
+                                                errorMessage: `Process exited with code ${code}`,
+                                            });
+                                            finished();
+                                        }
+                                    } else {
+                                        finished();
+                                    }
+                                }
+                            },
+                            (output) => {
+                                // Replace console colors
+                                output = output.replace(/\x1b\[[0-9;]*m/g, "");
+
+                                // Split lines and trim
+                                output
+                                    .trim()
+                                    .split("\n")
+                                    .forEach((line) => {
+                                        this.output.push(line.trim());
+                                    });
+                            }
+                        )
+                    );
+                }
+            });
 
             return true;
         } else {

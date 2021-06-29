@@ -315,16 +315,28 @@ module.exports = {
     // @param dest {String} Destination file path
     // @param cb {Function} Callback
     downloadPath: (key, dest, cb) => {
-        const writeStream = fs.createWriteStream(dest);
+        let retries = 0;
+        const MAX_RETRIES = 10;
+        function dl() {
+            const writeStream = fs.createWriteStream(dest);
 
-        s3.getObject({
-            Bucket: config.s3Bucket,
-            Key: key,
-        })
-        .createReadStream()
-        .on("error", (err) => cb(err))
-        .pipe(writeStream)
-        .on('error', (err) => cb(err))
-        .on('finish', () => cb());
+            s3.getObject({
+                Bucket: config.s3Bucket,
+                Key: key,
+            })
+                .createReadStream()
+                .pipe(writeStream)
+                .on('error', (err) => {
+                    if (err && retries >= MAX_RETRIES) cb(err);
+                    else {  
+                        retries++;
+                        dl();
+                        stream.end();
+                    }
+                })
+                .on('finish', () => cb());
+        }
+
+        dl();
     },
 };

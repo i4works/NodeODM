@@ -175,6 +175,7 @@ module.exports = {
         const bodyFile = path.join(srcPath, "body.json");
         const imagesFile = path.join(srcPath, 'images.sg');
 
+
         async.series(
             {
                 body: (cb) => {
@@ -193,7 +194,7 @@ module.exports = {
                         }
                     });
                 },
-                _: (cb) => {
+                imageLinks: (cb) => {
                     fs.stat(imagesFile, (err, stats) => {
                         if (err) cb(null);
                         else {
@@ -202,8 +203,7 @@ module.exports = {
                                 else {
                                     const imageLinks = data.split('\n');
 
-                                    req.body.imageLinks = imageLinks;
-                                    cb(null);
+                                    cb(null, imageLinks);
                                 }
                             });
                         }
@@ -211,13 +211,14 @@ module.exports = {
                 },
                 files: (cb) => fs.readdir(srcPath, cb),
             },
-            (err, { body, files }) => {
+            (err, { body, imageLinks, files}) => {
                 if (err) res.json({ error: err.message });
                 else {
                     req.body = body;
                     req.files = files;
+                    req.body.imageLinks = imageLinks || [];;
 
-                    if (req.files.length === 0) {
+                    if ((req.files.length + imageLinks.length) === 0 ) {
                         req.error = "Need at least 1 file.";
                     }
 
@@ -499,6 +500,7 @@ module.exports = {
                             }
                         });
                     },
+
 
                     // Create task
                     (cb) => {
