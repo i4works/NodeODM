@@ -156,5 +156,11 @@ module.exports = {
         return [options.inputFile, "-o", options.outputFile];
     }, ["inputFile", "outputFile"], 
        null, 
-       false)
+       false),
+
+    runFixBB: makeRunner("lasinfo", function (options) {
+        return ['-i', options.inputFile, '-repair_bb'];
+    }, ['inputFile'],
+        null,
+        false)
 };

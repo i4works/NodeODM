@@ -459,6 +459,12 @@ module.exports = class Task {
                 let runner;
 
                 switch (type) {
+                    case 'pointcloud_pre':
+                        opts = {
+                            inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz')
+                        };
+                        runner = processRunner.runFixBB;
+                        break;
                     case 'pointcloud':
                         opts = {
                             input: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
@@ -603,6 +609,11 @@ module.exports = class Task {
 
             if (this.projectId && allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                 // pointcloud output is wanted, run necessary post processing
+                
+                // sometimes output pointcloud has some points that are not in the bounding box of the header. This should fix those.
+                tasks.push(runSGPostprocess('pointcloud_pre'));
+
+                // convert
                 tasks.push(runSGPostprocess('pointcloud'));
             }
 
