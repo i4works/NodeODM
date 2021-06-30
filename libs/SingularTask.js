@@ -147,7 +147,7 @@ module.exports = class SingularTask extends AbstractTask {
             this.setStatus(statusCodes.RUNNING);
 
             switch (this.taskType) {
-                case: 'pointcloud': 
+                case 'pointcloud': 
                     const { inputResourceId, outputResourceId } = this.inputs;
                     // TODO download pointcloud.laz
 
@@ -181,7 +181,7 @@ module.exports = class SingularTask extends AbstractTask {
                     tasks.push(this.runProcess('ifc-convert'))
 
                     break;
-                case default:
+                default:
                     break;
             }
 
