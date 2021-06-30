@@ -167,7 +167,7 @@ class TaskManager{
                 async.each(tasks, (taskJson, done) => {
                     const {constructorName, data} = taskJson;
                     if (constructorName === 'Task') {
-                        Task.CreateFromSerialized(taskJson, (err, task) => {
+                        Task.CreateFromSerialized(data, (err, task) => {
                             if (err) done(err);
                             else{
                                 this.tasks[task.uuid] = task;

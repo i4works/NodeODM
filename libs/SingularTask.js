@@ -149,17 +149,63 @@ module.exports = class SingularTask extends AbstractTask {
             switch (this.taskType) {
                 case 'pointcloud': 
                     const { inputResourceId, outputResourceId } = this.inputs;
-                    // TODO download pointcloud.laz
+                    this.output.push('downloading pointcloud...')
+                    tasks.push(cb => {
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/pointcloud/${inputResourceId}/pointcloud.laz`,
+                            path.join(this.getProjectFolderPath(), 'pointcloud.laz'),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading pointcloud, continuing');
+                                cb(err);
+                            },
+                        )
+                    });
 
                     tasks.push(this.runProcess('pointcloud_pre'));
                     tasks.push(this.runProcess('pointcloud'));
 
+                    tasks.push((cb) => {
+                        S3.uploadPaths(
+                            this.getProjectFolderPath(),
+                            config.s3Bucket,
+                            `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}`,
+                            ['potree_pointcloud'],
+                            (err) => {
+                                if (!err) this.output.push('Done uploading potree_pointcloud, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });
                     break;
                 case 'orthophoto': 
-                    const { inputResourceId, outputResourceId } = this.inputs;
-                    // TODO download orthophoto.tif
+                    const { inputResourceId } = this.inputs;
+                    this.output.push('downloading orthophoto...')
+                    tasks.push(cb => {
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/orthophoto/${inputResourceId}/orthophoto-cog.tif`,
+                            path.join(this.getProjectFolderPath(), 'orthophoto.tif'),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading orthophoto, continuing');
+                                cb(err);
+                            },
+                        )
+                    });
 
                     tasks.push(this.runProcess('orthophoto'));
+
+                    tasks.push((cb) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/resource/orthophoto/${inputResouceId}/orthophoto-cog.tif`,
+                            path.join(this.getProjectFolderPath(),'orthophoto-cog.tif'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded orthophoto, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });
+
                     break;
                 case 'mesh':
                     const { inputResouceId, outputResourceId } = this.inputs;
