@@ -22,7 +22,9 @@ const rmdir = require('rimraf');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const AbstractTask = require('./AbstractTask');
 const Task = require('./Task');
+const SingularTask = require('./SingularTask');
 const statusCodes = require('./statusCodes');
 const async = require('async');
 const schedule = require('node-schedule');
@@ -163,13 +165,26 @@ class TaskManager{
                 }
 
                 async.each(tasks, (taskJson, done) => {
-                    Task.CreateFromSerialized(taskJson, (err, task) => {
-                        if (err) done(err);
-                        else{
-                            this.tasks[task.uuid] = task;
-                            done();
-                        }
-                    });
+                    const {constructorName, data} = taskJson;
+                    if (constructorName === 'Task') {
+                        Task.CreateFromSerialized(taskJson, (err, task) => {
+                            if (err) done(err);
+                            else{
+                                this.tasks[task.uuid] = task;
+                                done();
+                            }
+                        });
+                    } else if (constructorName === 'SingularTask') {
+                        SingularTask.CreateFromSerialized(taskJson, (err, task) => {
+                            if (err) done(err);
+                            else{
+                                this.tasks[task.uuid] = task;
+                                done();
+                            }
+                        });
+                    } else {
+                        done('Unspported task constructor ' + constructorName);
+                    }
                 }, err => {
                     logger.info(`Initialized ${tasks.length} tasks`);
                     if (done !== undefined) done();
@@ -213,17 +228,17 @@ class TaskManager{
     }
 
     addToRunningQueue(task){
-        assert(task.constructor.name === "Task", "Must be a Task object");
+        assert(task instanceof AbstractTask, "Must be a Task object");
         this.runningQueue.push(task);
     }
 
     removeFromRunningQueue(task){
-        assert(task.constructor.name === "Task", "Must be a Task object");
+        assert(task instanceof AbstractTask, "Must be a Task object");
         this.runningQueue = this.runningQueue.filter(t => t !== task);
     }
 
     addNew(task){
-        assert(task.constructor.name === "Task", "Must be a Task object");
+        assert(task instanceof AbstractTask, "Must be a Task object");
         this.tasks[task.uuid] = task;
 
         this.processNextTask();
@@ -291,7 +306,10 @@ class TaskManager{
         let output = [];
 
         for (let uuid in this.tasks){
-            output.push(this.tasks[uuid].serialize());
+            output.push({
+                constructorName: this.tasks[uuid].constructor.name,
+                data: this.tasks[uuid].serialize(),
+            });
         }
 
         fs.writeFile(TASKS_DUMP_FILE, JSON.stringify(output), err => {

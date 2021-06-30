@@ -32,12 +32,15 @@ const S3 = require("./S3");
 const request = require("request");
 const utils = require("./utils");
 const archiver = require("archiver");
+
 const stream = require('stream');
 const readline = require('readline');
+const AbstractTask = require('./AbstractTask');
+
 
 const statusCodes = require("./statusCodes");
 
-module.exports = class Task {
+module.exports = class Task extends AbstractTask {
     constructor(
         uuid,
         projectId,
@@ -50,6 +53,7 @@ module.exports = class Task {
         dateCreated = new Date().getTime(),
         done = () => {}
     ) {
+        super();
         
         assert(projectId !== undefined, 'projectId must be set');
         assert(uuid !== undefined, "uuid must be set");
@@ -57,7 +61,7 @@ module.exports = class Task {
 
         this.uuid = uuid;
         this.projectId = projectId;
-        this.imageLinks = imageLinks
+        this.imageLinks = imageLinks;
         this.name = name !== "" ? name : "Task of " + new Date().toISOString();
         this.dateCreated = isNaN(parseInt(dateCreated))
             ? new Date().getTime()
@@ -454,74 +458,6 @@ module.exports = class Task {
                 };
             };
 
-            const runSGPostprocess = (type) => {
-                let opts;
-                let runner;
-
-                switch (type) {
-                    case 'pointcloud_pre':
-                        opts = {
-                            inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz')
-                        };
-                        runner = processRunner.runFixBB;
-                        break;
-                    case 'pointcloud':
-                        opts = {
-                            input: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
-                            outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
-                        };
-                        runner = processRunner.runPotreeConverter;
-                        break;
-                    case 'orthophoto':
-                        opts = {
-                            inputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif'),
-                            outputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto-cog.tif')
-                        };
-                        runner = processRunner.runGenerateCog;
-                        break;
-                    case 'mesh_initial':
-                        opts = {
-                            inputOBJFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.obj'),
-                            inputMTLFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.mtl'),
-                            outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs')
-                        };
-                        runner = processRunner.runNxsBuild;
-                        break;
-                    case 'mesh_post':
-                        opts = {
-                            inputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs'),
-                            outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxz')
-                        };
-                        runner = processRunner.runNxsCompress;
-                        break;
-                    default:
-                        return (done) => done();
-                }
-                 
-                return (done) => {
-                    this.runningProcesses.push(
-                        runner(opts,
-                            (err, code, _) => {
-                                if (err) done(err);
-                                else {
-                                    if (code === 0) {
-                                        this.updateProgress(93);
-                                        done();
-                                    } else
-                                        done(
-                                            new Error(
-                                                `Process exited with code ${code}`
-                                            )
-                                        );
-                                }
-                            },
-                            (output) => {
-                                this.output.push(output);
-                            }
-                        )
-                    )
-                }
-            }
 
             const saveTaskOutput = (destination) => {
                 return (done) => {
@@ -611,15 +547,15 @@ module.exports = class Task {
                 // pointcloud output is wanted, run necessary post processing
                 
                 // sometimes output pointcloud has some points that are not in the bounding box of the header. This should fix those.
-                tasks.push(runSGPostprocess('pointcloud_pre'));
+                tasks.push(this.runPostProcess('pointcloud_pre'));
 
                 // convert
-                tasks.push(runSGPostprocess('pointcloud'));
+                tasks.push(this.runPostProcess('pointcloud'));
             }
 
             if (this.projectId && allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
                 // orthophoto output is wanted, run necessary post processing
-                tasks.push(runSGPostprocess('orthophoto'));
+                tasks.push(this.runPostProcess('orthophoto'));
             }
 
             if (this.projectId && allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')){
@@ -627,8 +563,8 @@ module.exports = class Task {
                 if (!fs.existsSync(path.join(this.getProjectFolderPath(), 'nexus'))) {
                     fs.mkdirSync(path.join(this.getProjectFolderPath(), 'nexus'));
                 }
-                tasks.push(runSGPostprocess('mesh_initial'));
-                tasks.push(runSGPostprocess('mesh_post'));
+                tasks.push(this.runPostProcess('mesh_initial'));
+                tasks.push(this.runPostProcess('mesh_post'));
             }
 
             const taskOutputFile = path.join(
@@ -699,7 +635,7 @@ module.exports = class Task {
                     if (allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/orthophoto/${this.uuid}_orthophoto-cog.tif`,
+                                `project/${this.projectId}/process/${this.uuid}/orthophoto/orthophoto-cog.tif`,
                                 path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto-cog.tif'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded orthophoto, continuing');
@@ -895,6 +831,75 @@ module.exports = class Task {
         }
     }
 
+    runPostProcess (type) {
+        let opts;
+        let runner;
+
+        switch (type) {
+            case 'pointcloud_pre':
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz')
+                };
+                runner = processRunner.runFixBB;
+                break;
+            case 'pointcloud':
+                opts = {
+                    input: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
+                    outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
+                };
+                runner = processRunner.runPotreeConverter;
+                break;
+            case 'orthophoto':
+                opts = {
+                    inputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto.tif'),
+                    outputPath: path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto-cog.tif')
+                };
+                runner = processRunner.runGenerateCog;
+                break;
+            case 'mesh_initial':
+                opts = {
+                    inputOBJFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.obj'),
+                    inputMTLFile: path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.mtl'),
+                    outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs')
+                };
+                runner = processRunner.runNxsBuild;
+                break;
+            case 'mesh_post':
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxs'),
+                    outputFile: path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxz')
+                };
+                runner = processRunner.runNxsCompress;
+                break;
+            default:
+                return (done) => done();
+        }
+
+        return (done) => {
+            this.runningProcesses.push(
+                runner(opts,
+                    (err, code, _) => {
+                        if (err) done(err);
+                        else {
+                            if (code === 0) {
+                                this.updateProgress(93);
+                                done();
+                            } else
+                                done(
+                                    new Error(
+                                        `Process exited with code ${code}`
+                                    )
+                                );
+                        }
+                    },
+                    (output) => {
+                        this.output.push(output);
+                    }
+                )
+            )
+        }
+    }
+
     // Re-executes the task (by setting it's state back to QUEUED)
     // Only tasks that have been canceled, completed or have failed can be restarted.
     restart(options, cb) {
@@ -922,7 +927,9 @@ module.exports = class Task {
     getInfo() {
         return {
             uuid: this.uuid,
+            projectId: this.projectId,
             name: this.name,
+            projectId: this.projectId,
             dateCreated: this.dateCreated,
             processingTime: this.processingTime,
             status: this.status,
