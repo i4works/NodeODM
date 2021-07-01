@@ -413,6 +413,82 @@ app.get("/task/list", authCheck, (req, res) => {
 });
 
 /** @swagger
+*   /task/singular/new
+*     post:
+*       description: Posts a singular process task (potreeconverter, generate-cog, etc.)
+*       tags: [task]
+ *      consumes:
+ *        - multipart/form-data
+ *      parameters:
+ *        -
+ *          name: name
+ *          in: formData
+ *          description: An optional name to be associated with the task
+ *          required: false
+ *          type: string
+ *        -
+ *          name: projectId
+ *          in: formData
+ *          description: ProjectID for saha-gozu
+ *          required: true
+ *          type: number
+ *        -
+ *          name: options
+ *          in: formData
+ *          description: 'Serialized JSON string of the options to use for processing, as an array of the format: [{name: option1, value: value1}, {name: option2, value: value2}, ...]'
+ *          required: true
+ *          type: string
+ *        -
+ *          name: webhook
+ *          in: formData
+ *          description: Optional URL to call when processing has ended (either successfully or unsuccessfully).
+ *          required: false
+ *          type: string
+ *        -
+ *          name: dateCreated
+ *          in: formData
+ *          description: 'An optional timestamp overriding the default creation date of the task.'
+ *          required: false
+ *          type: integer
+ *        -
+ *          name: taskType
+ *          in: formData
+ *          description: 'Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, ifc-convert
+ *        -
+ *          name: token
+ *          in: query
+ *          description: 'Token required for authentication (when authentication is required).'
+ *          required: false
+ *          type: string
+ *        -
+ *          name: set-uuid
+ *          in: header
+ *          description: 'An optional UUID string that will be used as UUID for this task instead of generating a random one.'
+ *          required: false
+ *          type: string
+ *      responses:
+ *        200:
+ *          description: Success
+ *          schema:
+ *            type: object
+ *            required: [uuid]
+ *            properties:
+ *              uuid:
+ *                type: string
+ *                description: UUID of the newly created task
+ *        default:
+ *          description: Error
+ *          schema:
+ *            $ref: '#/definitions/Error'
+ */
+app.post("/task/singular/new", 
+    authCheck,
+    taskNew.assignUUID,
+    formDataParser,
+    taskNew.createSingularTask
+);
+
+/** @swagger
  *  /task/{uuid}/info:
  *     get:
  *       description: Gets information about this task, such as name, creation date, processing time, status, command line options and number of images being processed. See schema definition for a full list.

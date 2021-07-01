@@ -5,6 +5,7 @@ const AbstractTask = require("./AbstractTask");
 const processRunner = require("./processRunner");
 const Directories = require("./Directories");
 const S3 = require("./S3");
+const zipUtils = require('./ziputils');
 
 const statusCodes = require('./statusCodes');
 
@@ -12,25 +13,24 @@ module.exports = class SingularTask extends AbstractTask {
     constructor(
         uuid,
         projectId,
-        inputs,
         name,
         options = [],
         webhook = null,
         taskType,
         dateCreated = new Date().getTime(),
-        done = () => {}        
+        done = () => {}
     ) {
         super();
         assert(projectId !== undefined, 'projectId must be set');
         assert(uuid !== undefined, "uuid must be set");
         assert(done !== undefined, "ready must be set");
         assert(taskType !== undefined, "taskType must be set");
-        assert(inputs !== undefined, 'inputs must be set');
-        // TODO check if taskType matches input type
+        assert(!options.length, 'options must be set');
 
         this.uuid = uuid;
         this.projectId = projectId;
-        this.resourceId = inputs;
+        this.options = options;
+        this.webhook = webhook;
         this.name = name !== "" ? name : "Task of " + new Date().toISOString();
         this.dateCreated = isNaN(parseInt(dateCreated))
             ? new Date().getTime()
@@ -41,9 +41,10 @@ module.exports = class SingularTask extends AbstractTask {
         this.runningProcesses = [];
         this.output = [];
         this.setStatus(statusCodes.QUEUED);
+        done(null, this);
     }
 
-    updateProgress () {
+    updateProgress() {
         globalProgress = Math.min(100, Math.max(0, globalProgress));
 
         // Progress updates are asynchronous (via UDP)
@@ -133,6 +134,7 @@ module.exports = class SingularTask extends AbstractTask {
     }
 
     start(done) {
+        const parsedOptions = this.options.reduce((r, c) => {r[c.name] = c.value; return r;}, {});
         const finished = (err) => {
             this.updateProgress(100);
             this.stopTrackingProcessingTime();
@@ -147,8 +149,8 @@ module.exports = class SingularTask extends AbstractTask {
             this.setStatus(statusCodes.RUNNING);
 
             switch (this.taskType) {
-                case 'pointcloud': 
-                    const { inputResourceId, outputResourceId } = this.inputs;
+                case 'pointcloud':
+                    const {inputResourceId, outputResourceId} = parsedOptions;
                     this.output.push('downloading pointcloud...')
                     tasks.push(cb => {
                         S3.downloadPath(
@@ -161,8 +163,8 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
 
-                    tasks.push(this.runProcess('pointcloud_pre'));
-                    tasks.push(this.runProcess('pointcloud'));
+                    tasks.push(this.runProcess("pointcloud_pre"));
+                    tasks.push(this.runProcess("pointcloud"));
 
                     tasks.push((cb) => {
                         S3.uploadPaths(
@@ -178,8 +180,8 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
                     break;
-                case 'orthophoto': 
-                    const { inputResourceId } = this.inputs;
+                case 'orthophoto':
+                    const {inputResourceId} = parsedOptions;
                     this.output.push('downloading orthophoto...')
                     tasks.push(cb => {
                         S3.downloadPath(
@@ -192,12 +194,12 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
 
-                    tasks.push(this.runProcess('orthophoto'));
+                    tasks.push(this.runProcess("orthophoto"));
 
                     tasks.push((cb) => {
                         S3.uploadSingle(
                             `project/${this.projectId}/resource/orthophoto/${inputResouceId}/orthophoto-cog.tif`,
-                            path.join(this.getProjectFolderPath(),'orthophoto-cog.tif'),
+                            path.join(this.getProjectFolderPath(), 'orthophoto-cog.tif'),
                             (err) => {
                                 if (!err) this.output.push('Uploaded orthophoto, finalizing');
                                 cb(err);
@@ -208,23 +210,59 @@ module.exports = class SingularTask extends AbstractTask {
 
                     break;
                 case 'mesh':
-                    const { inputResouceId, outputResourceId } = this.inputs;
-                    // TODO download mesh zip or individual files
+                    const {inputResouceId, outputResourceId} = parsedOptions;
+                    // TODO download mesh zip 
+                    this.output.push('downloading mesh...')
+                    tasks.push(cb => {
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/mesh/${inputResourceId}/mesh.zip`,
+                            path.join(this.getProjectFolderPath(), 'mesh.zip'),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading mesh, extracting');
+                                cb(err);
+                            },
+                        )
+                    });
 
-                    tasks.push(this.runProcess('mesh_initial'));
-                    tasks.push(this.runProcess('mesh_post'));
+                    tasks.push(cb => {
+                        zipUtils.unzip(
+                            path.join(this.getProjectFolderPath(), 'mesh.zip'),
+                            'mesh',
+                            (err) => {
+                                if (!err) this.output.push('Mesh extracted, processing...');
+                                cb(err);
+                            },
+                        );
+                    });
+
+                    tasks.push(this.runProcess("mesh_initial"));
+                    tasks.push(this.runProcess("mesh_post"));
+
+                    tasks.push((cb) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/resource/nexus/${outputResourceId}/nexus.nxz`,
+                            path.join(this.getProjectFolderPath(), 'nexus.nxz'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded mesh, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });
                     break;
                 case 'sg-compare':
-                    const { prevResourceId, nextResourceId, outputResourceId } = this.inputs;
+                    const {prevResourceId, nextResourceId, outputResourceId} = parsedOptions;
                     // TODO download pointclouds 
 
-                    tasks.push(this.runProcess('sg-compare'))
+                    tasks.push(this.runProcess("sg-compare"))
+
+                    // TODO run potreeconverter 
 
                     break;
                 case 'ifc-convert':
-                    const { inputResourceId, outputResourceId } = this.inputs; // this might be wrong
+                    const {inputResourceId, outputResourceId} = parsedOptions; // this might be wrong
                     // TODO download ifc file
-                    tasks.push(this.runProcess('ifc-convert'))
+                    tasks.push(this.runProcess("ifc-convert"))
 
                     break;
                 default:
@@ -247,51 +285,51 @@ module.exports = class SingularTask extends AbstractTask {
         }
     }
 
-    runProcess (type) {
+    runProcess(type) {
         let opts;
         let runner;
 
         switch (type) {
-            case 'pointcloud_pre':
+            case "pointcloud_pre":
                 opts = {
-                    inputFile: path.join(this.getProjectFolderPath(),'pointcloud.laz')
+                    inputFile: path.join(this.getProjectFolderPath(), "pointcloud.laz")
                 };
                 runner = processRunner.runFixBB;
                 break;
-            case 'pointcloud':
+            case "pointcloud":
                 opts = {
-                    input: path.join(this.getProjectFolderPath(), 'pointcloud.laz'),
-                    outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
+                    input: path.join(this.getProjectFolderPath(), "pointcloud.laz"),
+                    outDir: path.join(this.getProjectFolderPath(), "potree_pointcloud")
                 };
                 runner = processRunner.runPotreeConverter;
                 break;
-            case 'orthophoto':
+            case "orthophoto":
                 opts = {
-                    inputPath: path.join(this.getProjectFolderPath(), 'orthophoto.tif'),
-                    outputPath: path.join(this.getProjectFolderPath(), 'orthophoto-cog.tif')
+                    inputPath: path.join(this.getProjectFolderPath(), "orthophoto.tif"),
+                    outputPath: path.join(this.getProjectFolderPath(), "orthophoto-cog.tif")
                 };
                 runner = processRunner.runGenerateCog;
                 break;
-            case 'mesh_initial':
+            case "mesh_initial":
                 opts = {
-                    inputOBJFile: path.join(this.getProjectFolderPath(), 'mesh.obj'),
-                    inputMTLFile: path.join(this.getProjectFolderPath(), 'mesh.mtl'),
-                    outputFile: path.join(this.getProjectFolderPath(), 'nexus.nxs')
+                    inputOBJFile: path.join(this.getProjectFolderPath(), "mesh", "mesh.obj"),
+                    inputMTLFile: path.join(this.getProjectFolderPath(), "mesh", "mesh.mtl"),
+                    outputFile: path.join(this.getProjectFolderPath(), "nexus.nxs")
                 };
                 runner = processRunner.runNxsBuild;
                 break;
-            case 'mesh_post':
+            case "mesh_post":
                 opts = {
-                    inputFile: path.join(this.getProjectFolderPath(), 'nexus.nxs'),
-                    outputFile: path.join(this.getProjectFolderPath(), 'nexus.nxz')
+                    inputFile: path.join(this.getProjectFolderPath(), "nexus.nxs"),
+                    outputFile: path.join(this.getProjectFolderPath(), "nexus.nxz")
                 };
                 runner = processRunner.runNxsCompress;
                 break;
-            case 'ifc-convert':
+            case "ifc-convert":
                 // TODO here
                 return (done) => done();
                 break;
-            case 'sg-compare':
+            case "sg-compare":
                 // TODO here
                 return (done) => done();
                 break;
@@ -353,11 +391,10 @@ module.exports = class SingularTask extends AbstractTask {
             uuid: this.uuid,
             projectId: this.projectId,
             name: this.name,
-            inputs: this.inputs,
+            options: this.options,
             dateCreated: this.dateCreated,
             processingTime: this.processingTime,
             status: this.status,
-            options: this.options,
             taskType: this.taskType,
             progress: this.progress,
         };
@@ -390,7 +427,7 @@ module.exports = class SingularTask extends AbstractTask {
                             );
                             return;
                         }
-                        request.post(hook, { json }, (error, response) => {
+                        request.post(hook, {json}, (error, response) => {
                             if (error || response.statusCode != 200) {
                                 logger.warn(
                                     `Webhook invokation failed, will retry in a bit: ${hook}`
@@ -416,12 +453,11 @@ module.exports = class SingularTask extends AbstractTask {
             uuid: this.uuid,
             projectId: this.projectId,
             name: this.name,
-            inputs: this.inputs,
+            options: this.options,
             dateCreated: this.dateCreated,
             dateStarted: this.dateStarted,
             status: this.status,
             taskType: this.taskType,
-            options: this.options,
             webhook: this.webhook,
         };
     }
@@ -430,7 +466,6 @@ module.exports = class SingularTask extends AbstractTask {
         new SingularTask(
             taskJson.uuid,
             taskJson.projectId,
-            taskJson.inputs,
             taskJson.name,
             taskJson.options,
             taskJson.taskType,

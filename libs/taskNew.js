@@ -26,11 +26,12 @@ const rmdir = require("rimraf");
 const Directories = require("./Directories");
 const mv = require("mv");
 const Task = require("./Task");
+const SingularTask = require("./SingularTask");
 const async = require("async");
 const odmInfo = require("./odmInfo");
 const request = require("request");
 const ziputils = require("./ziputils");
-const { cancelJob } = require("node-schedule");
+const {cancelJob} = require("node-schedule");
 
 const s3 = require('./S3');
 
@@ -45,7 +46,7 @@ const download = function (uri, filename, callback) {
     });
 };
 
-const removeDirectory = function (dir, cb = () => { }) {
+const removeDirectory = function (dir, cb = () => {}) {
     fs.stat(dir, (err, stats) => {
         if (!err && stats.isDirectory()) rmdir(dir, cb);
         // ignore errors, don't wait
@@ -98,6 +99,44 @@ const upload = multer({
     }),
 });
 
+const checkSingularProcessOptions = (options, taskType, cb) => {
+    try {
+        if (typeof options === "string") options = JSON.parse(options);
+        if (!Array.isArray(options)) options = [];
+
+        const requiredOptions = {
+            "pointcloud": ["inputResouceId", "outputResourceId"],
+            "orthophoto": ["inputResouceId"],
+            "mesh": ["inputResouceId", "outputResourceId"],
+            "sg-compare": ["prevResourceId", "nextResourceId", "outputResourceId"],
+            "ifc-convert": ["inputResouceId", "outputResourceId"]
+        };
+
+        if (!requiredOptions[taskType]) 
+            return cb(`Unknown taskType : ${taskType}`);
+
+        const resultingOptions = [];
+
+        for (option of requiredOptions[taskType]) {
+            const matchingOption = options.find(o => o.name === option);
+
+            if (!matchingOption)  return cb(`Missing option : ${option}`);
+
+            if (!matchingOption.value)  return cb(`Option ${option} does not have a value`); 
+
+            const val = parseInt(matchingOption.value, 10);
+
+            if (Number.isNaN(val)) return cb(`Invalid option for ${option} : ${matchingOption.value}`);
+
+            resultingOptions.push({ name: option, value: val});
+        }
+
+        cb(null, resultingOptions);
+    } catch (err) {
+        cb(err);
+    }
+};
+
 module.exports = {
     assignUUID: (req, res, next) => {
         // A user can optionally suggest a UUID instead of letting
@@ -115,7 +154,7 @@ module.exports = {
                 req.id = userUuid;
                 next();
             } else {
-                res.json({ error: `Invalid set-uuid: ${userUuid}` });
+                res.json({error: `Invalid set-uuid: ${userUuid}`});
             }
         } else {
             req.id = uuidv4();
@@ -125,13 +164,13 @@ module.exports = {
 
     getUUID: (req, res, next) => {
         req.id = req.params.uuid;
-        if (!req.id) res.json({ error: `Invalid uuid (not set)` });
+        if (!req.id) res.json({error: `Invalid uuid (not set)`});
 
         const srcPath = path.join("tmp", req.id);
         const bodyFile = path.join(srcPath, "body.json");
 
         fs.access(bodyFile, fs.F_OK, (err) => {
-            if (err) res.json({ error: `Invalid uuid (not found)` });
+            if (err) res.json({error: `Invalid uuid (not found)`});
             else next();
         });
     },
@@ -154,9 +193,9 @@ module.exports = {
     handleUpload: (req, res) => {
         // IMPROVEMENT: check files count limits ahead of handleTaskNew
         if (req.files && req.files.length > 0) {
-            res.json({ success: true });
+            res.json({success: true});
         } else {
-            res.json({ error: "Need at least 1 file." });
+            res.json({error: "Need at least 1 file."});
         }
     },
 
@@ -164,8 +203,8 @@ module.exports = {
         if (req.body.images && req.body.images.length) {
             const srcPath = path.join("tmp", req.id);
             fs.appendFile(`${srcPath}/images.sg`, req.body.images.join('\n'), (err) => {
-                if (err) res.json({ error: err.message });
-                else res.json({ success: true });
+                if (err) res.json({error: err.message});
+                else res.json({success: true});
             });
         }
     },
@@ -211,14 +250,14 @@ module.exports = {
                 },
                 files: (cb) => fs.readdir(srcPath, cb),
             },
-            (err, { body, imageLinks, files}) => {
-                if (err) res.json({ error: err.message });
+            (err, {body, imageLinks, files}) => {
+                if (err) res.json({error: err.message});
                 else {
                     req.body = body;
                     req.files = files;
                     req.body.imageLinks = imageLinks || [];;
 
-                    if ((req.files.length + imageLinks.length) === 0 ) {
+                    if ((req.files.length + imageLinks.length) === 0) {
                         req.error = "Need at least 1 file.";
                     }
 
@@ -232,7 +271,7 @@ module.exports = {
         req.body = req.body || {};
 
         if (!req.body.projectId) {
-            res.json({ error: 'noProjectId' }); // error can be changed accordingly
+            res.json({error: 'noProjectId'}); // error can be changed accordingly
             return;
         }
 
@@ -241,7 +280,7 @@ module.exports = {
 
         // Print error message and cleanup
         const die = (error) => {
-            res.json({ error });
+            res.json({error});
             removeDirectory(srcPath);
         };
 
@@ -267,12 +306,12 @@ module.exports = {
                     fs.writeFile(
                         bodyFile,
                         JSON.stringify(req.body),
-                        { encoding: "utf8" },
+                        {encoding: "utf8"},
                         cb
                     );
                 },
                 (cb) => {
-                    res.json({ uuid: req.id });
+                    res.json({uuid: req.id});
                     cb();
                 },
             ],
@@ -291,7 +330,7 @@ module.exports = {
 
         // Print error message and cleanup
         const die = (error) => {
-            res.json({ error });
+            res.json({error});
             removeDirectory(srcPath);
         };
 
@@ -307,7 +346,7 @@ module.exports = {
                 else {
                     fs.readdir(destImagesPath, (err, files) => {
                         if (err) cb(err);
-                        else if ((files.length + (req.body.imageLinks && req.body.imageLinks.length)) > config.maxImages )
+                        else if ((files.length + (req.body.imageLinks && req.body.imageLinks.length)) > config.maxImages)
                             cb(
                                 new Error(
                                     `${files.length} images uploaded, but this node can only process up to ${config.maxImages}.`
@@ -518,7 +557,7 @@ module.exports = {
                                 if (err) cb(err);
                                 else {
                                     TaskManager.singleton().addNew(task);
-                                    res.json({ uuid: req.id });
+                                    res.json({uuid: req.id});
                                     cb();
                                 }
                             }
@@ -531,4 +570,53 @@ module.exports = {
             );
         }
     },
+
+    createSingularTask: (req, res) => {
+        const die = (error) => {
+            res.json({error});
+        }
+
+        if (req.error !== undefined) {
+            die(req.error)
+        } else {
+            const destPath = path.join(Directories.data, req.id);
+
+            async.series([
+                // check options
+                (cb) => {
+                    checkSingularProcessOptions(req.body.options, req.body.taskType, (err, options) => {
+                        if (err) cb(err)
+                        else {
+                            req.body.options = options;
+                            cb(null);
+                        }
+                    })
+                },
+                // create task folder
+                (cb) => fs.mkdir(destPath, undefined, cb),
+                // Create task
+                (cb) => {
+                    new SingularTask(
+                        req.id,
+                        req.body.projectId,
+                        req.body.name,
+                        req.body.options,
+                        req.body.webhook,
+                        req.body.taskType,
+                        req.body.dateCreated,
+                        (err, task) => {
+                            if (err) cb(err);
+                            else {
+                                TaskManager.singleton().addNew(task);
+                                res.json({uuid: req.id});
+                                cb();
+                            }
+                        }
+                    );
+                },
+            ], (err) => {
+                if (err) die(err.message)
+            })
+        }
+    }
 };
