@@ -1,9 +1,12 @@
-module.exports = class Task {
+module.exports = class AbstractTask {
     // Must have fields (to be compatible with TaskManger)
     // uuid
     // status
     // dateStarted
     // processingTime
+    constructor() {
+
+    }
 
     start () {
         throw new Error("start method should be implemented");

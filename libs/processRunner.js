@@ -35,6 +35,7 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
         if (typeof commandArgs === 'function') commandArgs = commandArgs(options);
 
         logger.info(`About to run: ${command} ${commandArgs.join(" ")}`);
+        outputReceived(`About to run: ${command} ${commandArgs.join(" ")}`);
 
         if (config.test && skipOnTest){
             logger.info("Test mode is on, command will not execute");

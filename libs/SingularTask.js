@@ -1,13 +1,20 @@
-const async = require("async");
-const kill = require("tree-kill");
+"use strict";
 
+const async = require("async");
+const path = require("path");
+const kill = require("tree-kill");
+const assert = require("assert");
+
+const config = require("../config");
 const AbstractTask = require("./AbstractTask");
 const processRunner = require("./processRunner");
 const Directories = require("./Directories");
 const S3 = require("./S3");
 const zipUtils = require('./ziputils');
+const logger = require("./logger");
 
 const statusCodes = require('./statusCodes');
+
 
 module.exports = class SingularTask extends AbstractTask {
     constructor(
@@ -17,6 +24,7 @@ module.exports = class SingularTask extends AbstractTask {
         options = [],
         webhook = null,
         taskType,
+        output,
         dateCreated = new Date().getTime(),
         done = () => {}
     ) {
@@ -25,11 +33,12 @@ module.exports = class SingularTask extends AbstractTask {
         assert(uuid !== undefined, "uuid must be set");
         assert(done !== undefined, "ready must be set");
         assert(taskType !== undefined, "taskType must be set");
-        assert(!options.length, 'options must be set');
+        assert(options.length, 'options must be set');
 
         this.uuid = uuid;
         this.projectId = projectId;
         this.options = options;
+        this.taskType = taskType;
         this.webhook = webhook;
         this.name = name !== "" ? name : "Task of " + new Date().toISOString();
         this.dateCreated = isNaN(parseInt(dateCreated))
@@ -39,12 +48,12 @@ module.exports = class SingularTask extends AbstractTask {
         this.processingTime = -1;
         this.progress = 0;
         this.runningProcesses = [];
-        this.output = [];
+        this.output = output || [];
         this.setStatus(statusCodes.QUEUED);
         done(null, this);
     }
 
-    updateProgress() {
+    updateProgress(globalProgress) {
         globalProgress = Math.min(100, Math.max(0, globalProgress));
 
         // Progress updates are asynchronous (via UDP)
@@ -149,13 +158,13 @@ module.exports = class SingularTask extends AbstractTask {
             this.setStatus(statusCodes.RUNNING);
 
             switch (this.taskType) {
-                case 'pointcloud':
-                    const {inputResourceId, outputResourceId} = parsedOptions;
-                    this.output.push('downloading pointcloud...')
+                case 'pointcloud': {
+                    const {inputResourceId, outputResourceId, fileName}  = parsedOptions;
                     tasks.push(cb => {
+                        this.output.push('downloading pointcloud...')
                         S3.downloadPath(
-                            `project/${this.projectId}/resource/pointcloud/${inputResourceId}/pointcloud.laz`,
-                            path.join(this.getProjectFolderPath(), 'pointcloud.laz'),
+                            `project/${this.projectId}/resource/pointcloud/${inputResourceId}/${fileName}`,
+                            path.join(this.getProjectFolderPath(), fileName),
                             (err) => {
                                 if (!err) this.output.push('Done downloading pointcloud, continuing');
                                 cb(err);
@@ -163,8 +172,8 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
 
-                    tasks.push(this.runProcess("pointcloud_pre"));
-                    tasks.push(this.runProcess("pointcloud"));
+                    tasks.push(this.runProcess("pointcloud_pre", { fileName }));
+                    tasks.push(this.runProcess("pointcloud", { fileName }));
 
                     tasks.push((cb) => {
                         S3.uploadPaths(
@@ -180,10 +189,11 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
                     break;
-                case 'orthophoto':
+                }
+                case 'orthophoto': {
                     const {inputResourceId} = parsedOptions;
-                    this.output.push('downloading orthophoto...')
                     tasks.push(cb => {
+                        this.output.push('downloading orthophoto...')
                         S3.downloadPath(
                             `project/${this.projectId}/resource/orthophoto/${inputResourceId}/orthophoto-cog.tif`,
                             path.join(this.getProjectFolderPath(), 'orthophoto.tif'),
@@ -198,7 +208,7 @@ module.exports = class SingularTask extends AbstractTask {
 
                     tasks.push((cb) => {
                         S3.uploadSingle(
-                            `project/${this.projectId}/resource/orthophoto/${inputResouceId}/orthophoto-cog.tif`,
+                            `project/${this.projectId}/resource/orthophoto/${inputResourceId}/orthophoto-cog.tif`,
                             path.join(this.getProjectFolderPath(), 'orthophoto-cog.tif'),
                             (err) => {
                                 if (!err) this.output.push('Uploaded orthophoto, finalizing');
@@ -209,11 +219,12 @@ module.exports = class SingularTask extends AbstractTask {
                     });
 
                     break;
-                case 'mesh':
-                    const {inputResouceId, outputResourceId} = parsedOptions;
+                }
+                case 'mesh': {
+                    const {inputResourceId, outputResourceId} = parsedOptions;
                     // TODO download mesh zip 
-                    this.output.push('downloading mesh...')
                     tasks.push(cb => {
+                        this.output.push('downloading mesh...')
                         S3.downloadPath(
                             `project/${this.projectId}/resource/mesh/${inputResourceId}/mesh.zip`,
                             path.join(this.getProjectFolderPath(), 'mesh.zip'),
@@ -250,7 +261,8 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
                     break;
-                case 'sg-compare':
+                }
+                case 'sg-compare': {
                     const {prevResourceId, nextResourceId, outputResourceId} = parsedOptions;
                     // TODO download pointclouds 
 
@@ -259,12 +271,14 @@ module.exports = class SingularTask extends AbstractTask {
                     // TODO run potreeconverter 
 
                     break;
-                case 'ifc-convert':
+                }
+                case 'ifc-convert': {
                     const {inputResourceId, outputResourceId} = parsedOptions; // this might be wrong
                     // TODO download ifc file
                     tasks.push(this.runProcess("ifc-convert"))
 
                     break;
+                }
                 default:
                     break;
             }
@@ -285,20 +299,20 @@ module.exports = class SingularTask extends AbstractTask {
         }
     }
 
-    runProcess(type) {
+    runProcess(type, options) {
         let opts;
         let runner;
 
         switch (type) {
             case "pointcloud_pre":
                 opts = {
-                    inputFile: path.join(this.getProjectFolderPath(), "pointcloud.laz")
+                    inputFile: path.join(this.getProjectFolderPath(), options.fileName)
                 };
                 runner = processRunner.runFixBB;
                 break;
             case "pointcloud":
                 opts = {
-                    input: path.join(this.getProjectFolderPath(), "pointcloud.laz"),
+                    input: path.join(this.getProjectFolderPath(), options.fileName),
                     outDir: path.join(this.getProjectFolderPath(), "potree_pointcloud")
                 };
                 runner = processRunner.runPotreeConverter;
@@ -411,38 +425,34 @@ module.exports = class SingularTask extends AbstractTask {
         // or for each individual task
         const hooks = [this.webhook, config.webhook];
 
-        this.readImagesDatabase((err, images) => {
-            if (err) logger.warn(err); // Continue with callback
-            if (!images) images = [];
+        // TODO sent required information to SG, e.g. folder size for PotreeConverter.
 
-            let json = this.getInfo();
-            json.images = images;
+        let json = this.getInfo();
 
-            hooks.forEach((hook) => {
-                if (hook && hook.length > 3) {
-                    const notifyCallback = (attempt) => {
-                        if (attempt > 5) {
+        hooks.forEach((hook) => {
+            if (hook && hook.length > 3) {
+                const notifyCallback = (attempt) => {
+                    if (attempt > 5) {
+                        logger.warn(
+                            `Webhook invokation failed, will not retry: ${hook}`
+                        );
+                        return;
+                    }
+                    request.post(hook, {json}, (error, response) => {
+                        if (error || response.statusCode != 200) {
                             logger.warn(
-                                `Webhook invokation failed, will not retry: ${hook}`
+                                `Webhook invokation failed, will retry in a bit: ${hook}`
                             );
-                            return;
+                            setTimeout(() => {
+                                notifyCallback(attempt + 1);
+                            }, attempt * 5000);
+                        } else {
+                            logger.debug(`Webhook invoked: ${hook}`);
                         }
-                        request.post(hook, {json}, (error, response) => {
-                            if (error || response.statusCode != 200) {
-                                logger.warn(
-                                    `Webhook invokation failed, will retry in a bit: ${hook}`
-                                );
-                                setTimeout(() => {
-                                    notifyCallback(attempt + 1);
-                                }, attempt * 5000);
-                            } else {
-                                logger.debug(`Webhook invoked: ${hook}`);
-                            }
-                        });
-                    };
-                    notifyCallback(0);
-                }
-            });
+                    });
+                };
+                notifyCallback(0);
+            }
         });
     }
 
@@ -459,6 +469,7 @@ module.exports = class SingularTask extends AbstractTask {
             status: this.status,
             taskType: this.taskType,
             webhook: this.webhook,
+            output: this.output
         };
     }
 
@@ -468,7 +479,9 @@ module.exports = class SingularTask extends AbstractTask {
             taskJson.projectId,
             taskJson.name,
             taskJson.options,
+            taskJson.webhook,
             taskJson.taskType,
+            taskJson.output,
             taskJson.dateCreated,
             (err, task) => {
                 if (err) done(err);

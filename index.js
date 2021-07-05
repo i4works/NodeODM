@@ -453,7 +453,7 @@ app.get("/task/list", authCheck, (req, res) => {
  *        -
  *          name: taskType
  *          in: formData
- *          description: 'Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, ifc-convert
+ *          description: 'Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, ifc-convert, encode-video(ffmpeg)
  *        -
  *          name: token
  *          in: query

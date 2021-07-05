@@ -50,6 +50,7 @@ module.exports = class Task extends AbstractTask {
         webhook = null,
         skipPostProcessing = false,
         outputs = [],
+        output,
         dateCreated = new Date().getTime(),
         done = () => {}
     ) {
@@ -73,7 +74,7 @@ module.exports = class Task extends AbstractTask {
         this.gcpFiles = [];
         this.geoFiles = [];
         this.imageGroupsFiles = [];
-        this.output = [];
+        this.output = output || [];
         this.runningProcesses = [];
         this.webhook = webhook;
         this.skipPostProcessing = skipPostProcessing;
@@ -152,6 +153,7 @@ module.exports = class Task extends AbstractTask {
             taskJson.webhook,
             taskJson.skipPostProcessing,
             taskJson.outputs,
+            taskJson.output,
             taskJson.dateCreated,
             (err, task) => {
                 if (err) done(err);
@@ -707,6 +709,7 @@ module.exports = class Task extends AbstractTask {
                             )
                         });
 
+                        // TODO only send compressed
                         tasks.push((done) => {
                             S3.uploadPaths(
                                 this.getProjectFolderPath(),
@@ -1019,6 +1022,7 @@ module.exports = class Task extends AbstractTask {
             webhook: this.webhook,
             skipPostProcessing: !!this.skipPostProcessing,
             outputs: this.outputs || [],
+            output: this.output
         };
     }
 };

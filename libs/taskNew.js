@@ -105,11 +105,11 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
         if (!Array.isArray(options)) options = [];
 
         const requiredOptions = {
-            "pointcloud": ["inputResouceId", "outputResourceId"],
-            "orthophoto": ["inputResouceId"],
-            "mesh": ["inputResouceId", "outputResourceId"],
+            "pointcloud": ["inputResourceId", "outputResourceId", "fileName"],
+            "orthophoto": ["inputResourceId"],
+            "mesh": ["inputResourceId", "outputResourceId"],
             "sg-compare": ["prevResourceId", "nextResourceId", "outputResourceId"],
-            "ifc-convert": ["inputResouceId", "outputResourceId"]
+            "ifc-convert": ["inputResourceId", "outputResourceId"]
         };
 
         if (!requiredOptions[taskType]) 
@@ -120,15 +120,20 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
         for (option of requiredOptions[taskType]) {
             const matchingOption = options.find(o => o.name === option);
 
-            if (!matchingOption)  return cb(`Missing option : ${option}`);
+            if (!matchingOption)  return cb(new Error(`Missing option : ${option}`));
 
-            if (!matchingOption.value)  return cb(`Option ${option} does not have a value`); 
+            if (!matchingOption.value)  return cb(new Error(`Option ${option} does not have a value`)); 
 
-            const val = parseInt(matchingOption.value, 10);
+            if (option.includes('Id')) {
+                const val = parseInt(matchingOption.value, 10);
 
-            if (Number.isNaN(val)) return cb(`Invalid option for ${option} : ${matchingOption.value}`);
+                if (Number.isNaN(val)) return cb(new Error(`Invalid option for ${option} : ${matchingOption.value}`));
 
-            resultingOptions.push({ name: option, value: val});
+                resultingOptions.push({ name: option, value: val });
+            } else {
+                resultingOptions.push({ name: option, value: matchingOption.value });
+            }
+
         }
 
         cb(null, resultingOptions);
@@ -552,6 +557,7 @@ module.exports = {
                             req.body.webhook,
                             req.body.skipPostProcessing === "true",
                             req.body.outputs,
+                            [],
                             req.body.dateCreated,
                             (err, task) => {
                                 if (err) cb(err);
@@ -603,6 +609,7 @@ module.exports = {
                         req.body.options,
                         req.body.webhook,
                         req.body.taskType,
+                        [],
                         req.body.dateCreated,
                         (err, task) => {
                             if (err) cb(err);

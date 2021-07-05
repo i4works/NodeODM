@@ -175,7 +175,7 @@ class TaskManager{
                             }
                         });
                     } else if (constructorName === 'SingularTask') {
-                        SingularTask.CreateFromSerialized(taskJson, (err, task) => {
+                        SingularTask.CreateFromSerialized(data, (err, task) => {
                             if (err) done(err);
                             else{
                                 this.tasks[task.uuid] = task;
