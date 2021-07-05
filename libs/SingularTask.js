@@ -4,6 +4,7 @@ const async = require("async");
 const path = require("path");
 const kill = require("tree-kill");
 const assert = require("assert");
+const rmdir = require('rimraf');
 
 const config = require("../config");
 const AbstractTask = require("./AbstractTask");
@@ -238,7 +239,7 @@ module.exports = class SingularTask extends AbstractTask {
                     tasks.push(cb => {
                         zipUtils.unzip(
                             path.join(this.getProjectFolderPath(), 'mesh.zip'),
-                            'mesh',
+                            path.join(this.getProjectFolderPath(), 'mesh'),
                             (err) => {
                                 if (!err) this.output.push('Mesh extracted, processing...');
                                 cb(err);

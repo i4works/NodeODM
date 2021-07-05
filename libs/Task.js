@@ -709,16 +709,13 @@ module.exports = class Task extends AbstractTask {
                             )
                         });
 
-                        // TODO only send compressed
                         tasks.push((done) => {
-                            S3.uploadPaths(
-                                this.getProjectFolderPath(),
-                                config.s3Bucket,
-                                `project/${this.projectId}/process/${this.uuid}`,
-                                ['nexus'],
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/nexus/nexus.nxz`,
+                                path.join(this.getProjectFolderPath(), "nexus",  "nexus.nxz"),
                                 (err) => {
-                                    if (!err) this.output.push('Done uploading to S3!!');
-                                    done(err);
+                                    if (!err) this.output.push('Uploaded nexus.nxz, finishing');
+                                    done (err);
                                 },
                                 (output) => this.output.push(output)
                             )
