@@ -223,7 +223,6 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'mesh': {
                     const {inputResourceId, outputResourceId} = parsedOptions;
-                    // TODO download mesh zip 
                     tasks.push(cb => {
                         this.output.push('downloading mesh...')
                         S3.downloadPath(
@@ -275,8 +274,29 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'ifc-convert': {
                     const {inputResourceId, outputResourceId} = parsedOptions; // this might be wrong
-                    // TODO download ifc file
+                    tasks.push(cb => {
+                        this.output.push('downloading mesh...')
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/bim/${inputResourceId}/bim.ifc`,
+                            path.join(this.getProjectFolderPath(), 'bim.ifc'),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading ifc, continuing');
+                                cb(err);
+                            },
+                        )
+                    });
                     tasks.push(this.runProcess("ifc-convert"))
+                    tasks.push((cb) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/resource/ifc-mesh/${outputResourceId}/bim.glb`,
+                            path.join(this.getProjectFolderPath(), 'bim.glb'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded ifc-mesh, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });
 
                     break;
                 }
@@ -341,8 +361,11 @@ module.exports = class SingularTask extends AbstractTask {
                 runner = processRunner.runNxsCompress;
                 break;
             case "ifc-convert":
-                // TODO here
-                return (done) => done();
+                opts= {
+                    inputFile: path.join(this.getProjectFolderPath(), "bim.ifc"),
+                    outputFile: path.join(this.getProjectFolderPath(), "bim.glb")
+                }
+                runner = processRunner.runIfcConverter;
                 break;
             case "sg-compare":
                 // TODO here
