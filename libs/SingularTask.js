@@ -4,7 +4,8 @@ const async = require("async");
 const path = require("path");
 const kill = require("tree-kill");
 const assert = require("assert");
-const rmdir = require('rimraf');
+const rmdir = require("rimraf");
+const fs = require("fs");
 
 const config = require("../config");
 const AbstractTask = require("./AbstractTask");
@@ -153,6 +154,20 @@ module.exports = class SingularTask extends AbstractTask {
 
         const tasks = [];
 
+        const saveTaskOutput = (destination) => {
+            return (done) => {
+                fs.writeFile(destination, this.output.join("\n"), (err) => {
+                    if (err)
+                        logger.info(
+                            `Cannot write log at ${destination}, skipping...`
+                        );
+                    done();
+                });
+            };
+        };
+
+        let taskOutputPath;
+
         if (this.status.code === statusCodes.QUEUED) {
             this.startTrackingProcessingTime();
             this.dateStarted = new Date().getTime();
@@ -161,6 +176,9 @@ module.exports = class SingularTask extends AbstractTask {
             switch (this.taskType) {
                 case 'pointcloud': {
                     const {inputResourceId, outputResourceId, fileName}  = parsedOptions;
+
+                    taskOutputPath = `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}/task_output.txt`;
+
                     tasks.push(cb => {
                         this.output.push('downloading pointcloud...')
                         S3.downloadPath(
@@ -176,12 +194,15 @@ module.exports = class SingularTask extends AbstractTask {
                     tasks.push(this.runProcess("pointcloud_pre", { fileName }));
                     tasks.push(this.runProcess("pointcloud", { fileName }));
 
+
                     tasks.push((cb) => {
+                        const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
+
                         S3.uploadPaths(
-                            this.getProjectFolderPath(),
+                            path.join(this.getProjectFolderPath(),"potree_pointcloud"),
                             config.s3Bucket,
                             `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}`,
-                            ['potree_pointcloud'],
+                            potreePointcloudFolderPaths,
                             (err) => {
                                 if (!err) this.output.push('Done uploading potree_pointcloud, finalizing');
                                 cb(err);
@@ -193,6 +214,9 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'orthophoto': {
                     const {inputResourceId} = parsedOptions;
+
+                    taskOutputPath = `project/${this.projectId}/resource/orthophoto/${inputResourceId}/task_output.txt`;
+
                     tasks.push(cb => {
                         this.output.push('downloading orthophoto...')
                         S3.downloadPath(
@@ -223,6 +247,9 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'mesh': {
                     const {inputResourceId, outputResourceId} = parsedOptions;
+
+                    taskOutputPath = `project/${this.projectId}/resource/nexus/${outputResourceId}/task_output.txt`;
+                    
                     tasks.push(cb => {
                         this.output.push('downloading mesh...')
                         S3.downloadPath(
@@ -264,6 +291,9 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'sg-compare': {
                     const {prevResourceId, nextResourceId, outputResourceId} = parsedOptions;
+
+                    taskOutputPath = ``; // TODO set this properly
+
                     // TODO download pointclouds 
 
                     tasks.push(this.runProcess("sg-compare"))
@@ -274,6 +304,9 @@ module.exports = class SingularTask extends AbstractTask {
                 }
                 case 'ifc-convert': {
                     const {inputResourceId, outputResourceId} = parsedOptions; // this might be wrong
+
+                    taskOutputPath = `project/${this.projectId}/resource/ifc-mesh/${outputResourceId}/task_output.txt`;
+
                     tasks.push(cb => {
                         this.output.push('downloading mesh...')
                         S3.downloadPath(
@@ -303,6 +336,25 @@ module.exports = class SingularTask extends AbstractTask {
                 default:
                     break;
             }
+
+            const taskOutputFile = path.join(
+                this.getProjectFolderPath(),
+                "task_output.txt"
+            );
+
+
+            tasks.push(saveTaskOutput(taskOutputFile));
+
+            tasks.push(done => {
+                S3.uploadSingle(
+                    taskOutputPath,
+                    taskOutputFile,
+                    (err) => {
+                        done(err);
+                    },
+                    () => { /* we've already saved task output file, no need to write */ }
+                )
+            });
 
             async.series(tasks, (err) => {
                 if (!err) {

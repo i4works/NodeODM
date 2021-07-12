@@ -569,11 +569,6 @@ module.exports = class Task extends AbstractTask {
                 tasks.push(this.runPostProcess('mesh_post'));
             }
 
-            const taskOutputFile = path.join(
-                this.getProjectFolderPath(),
-                "task_output.txt"
-            );
-            tasks.push(saveTaskOutput(taskOutputFile));
 
             const archiveFunc = config.has7z
                 ? createZipArchive
@@ -607,6 +602,8 @@ module.exports = class Task extends AbstractTask {
                     });
                 } else {
                     // sg s3 uplaod
+                    
+
                     if (allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                         tasks.push((done) => {
                             S3.uploadSingle(
@@ -722,6 +719,24 @@ module.exports = class Task extends AbstractTask {
                             
                         });
                     }
+
+                    const taskOutputFile = path.join(
+                        this.getProjectFolderPath(),
+                        "task_output.txt"
+                    );
+
+                    tasks.push(saveTaskOutput(taskOutputFile));
+
+                    tasks.push(done => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/task_output.txt`,
+                            taskOutputFile,
+                            (err) => {
+                                done(err);
+                            },
+                            () => { /* we've already saved task output file, no need to write */ }
+                        )
+                    });
                 }
             }
 
