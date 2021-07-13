@@ -124,10 +124,8 @@ module.exports = {
         null,
         false),
 
-    runGenerateCog: makeRunner("generate-cog.py", function (options) {
-        const params = ["-i", options.inputPath, "-p", options.outputPath];
-
-        params.push("-l"); // use local
+    runGenerateCog: makeRunner("gdal_translate", function (options) {
+        const params = ["-of COG", "-co BLOCKSIZE=256", "-co COMPRESS=DEFLATE", "-co BIGTIFF=IF_SAFER", "-co RESAMPLING=NEAREST", "-co TILING_SCHEME=GoogleMapsCompatible", options.inputPath, options.outputPath]
 
         return params;
     }, ["inputPath", "outputPath"],
