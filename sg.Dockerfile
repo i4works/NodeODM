@@ -74,7 +74,4 @@ RUN ln -s /var/www/PotreeConverter /usr/bin/PotreeConverter
 
 RUN npm install && mkdir tmp
 
-ENV PATH "${PATH}:/usr/bin"
-RUN echo $PATH
-
 ENTRYPOINT ["/usr/bin/node", "/var/www/index.js"]
