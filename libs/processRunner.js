@@ -125,7 +125,16 @@ module.exports = {
         false),
 
     runGenerateCog: makeRunner("gdal_translate", function (options) {
-        const params = ["-of COG", "-co BLOCKSIZE=256", "-co COMPRESS=DEFLATE", "-co BIGTIFF=IF_SAFER", "-co RESAMPLING=NEAREST", "-co TILING_SCHEME=GoogleMapsCompatible", options.inputPath, options.outputPath]
+        const params = [
+            options.inputPath, 
+            options.outputPath, 
+            "-of", "COG", 
+            "-co", "BLOCKSIZE=256", 
+            "-co", "COMPRESS=DEFLATE", 
+            "-co", "BIGTIFF=IF_SAFER", 
+            "-co", "RESAMPLING=NEAREST", 
+            "-co", "TILING_SCHEME=GoogleMapsCompatible"
+        ];
 
         return params;
     }, ["inputPath", "outputPath"],
