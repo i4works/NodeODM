@@ -8,10 +8,10 @@ USER root
 RUN apt-get update && apt-get install -y -qq --no-install-recommends curl unzip git software-properties-common cmake gcc g++ make libtbb-dev qt5-default libglew-dev libboost-dev libboost-program-options-dev libboost-thread-dev libboost-system-dev libboost-iostreams-dev libboost-filesystem-dev libgeotiff-dev libgdal-dev libproj-dev
 
 WORKDIR "/Workspace"
-RUN git clone https://github.com/potree/PotreeConverter.git /Workspace/PotreeConverter
+RUN git clone https://github.com/i4Works/PotreeConverter.git /Workspace/PotreeConverter
 
 WORKDIR "/Workspace/PotreeConverter"
-RUN git checkout 2.1
+RUN git checkout 2.1.1
 RUN mkdir -p build
 
 WORKDIR "/Workspace/PotreeConverter/build"
@@ -64,13 +64,11 @@ RUN mkdir /var/www
 WORKDIR "/var/www"
 COPY . /var/www
 
-COPY --from=SGDependencyBuilder /Workspace/PotreeConverter .
+COPY --from=SGDependencyBuilder /Workspace/PotreeConverter/build/PotreeConverter /usr/bin/PotreeConverter
 COPY --from=SGDependencyBuilder /Workspace/nexus/build/src/nxsbuild/nxsbuild /usr/bin/nxsbuild
 COPY --from=SGDependencyBuilder /Workspace/nexus/build/src/nxsedit/nxscompress /usr/bin/nxscompress
 COPY --from=SGDependencyBuilder /Workspace/IfcConvert /usr/bin/IfcConvert
 COPY --from=SGDependencyBuilder /Workspace/LAStools/bin/lasinfo /usr/bin/lasinfo
-
-RUN ln -s /var/www/PotreeConverter /usr/bin/PotreeConverter
 
 RUN npm install && mkdir tmp
 
