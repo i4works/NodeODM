@@ -894,7 +894,10 @@ module.exports = class Task extends AbstractTask {
             this.runningProcesses.push(
                 runner(opts,
                     (err, code, _) => {
-                        if (err) done(err);
+                        if (err) {
+                            console.log(err);
+                            done(err);
+                        }
                         else {
                             if (code === 0) {
                                 this.updateProgress(93);
