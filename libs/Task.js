@@ -602,7 +602,6 @@ module.exports = class Task extends AbstractTask {
                     });
                 } else {
                     // sg s3 uplaod
-                    
 
                     if (allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                         tasks.push((done) => {
@@ -629,6 +628,10 @@ module.exports = class Task extends AbstractTask {
                                 (output) => this.output.push(output)
                             )
                         });
+                        tasks.push(done => {
+                            this.callWebhooks('pointcloud');
+                            done(null);
+                        });
                     }
 
                     if (allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
@@ -643,6 +646,11 @@ module.exports = class Task extends AbstractTask {
                                 (output) => this.output.push(output)
                             )
                         });
+
+                        tasks.push(done => {
+                            this.callWebhooks('orthophoto');
+                            done(null);
+                        });                          
                     }
 
                     if (allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
@@ -716,8 +724,12 @@ module.exports = class Task extends AbstractTask {
                                 },
                                 (output) => this.output.push(output)
                             )
-                            
                         });
+
+                        tasks.push(done => {
+                            this.callWebhooks('mesh');
+                            done(null);
+                        });                         
                     }
 
                     const taskOutputFile = path.join(
@@ -945,7 +957,6 @@ module.exports = class Task extends AbstractTask {
     getInfo() {
         return {
             uuid: this.uuid,
-            projectId: this.projectId,
             name: this.name,
             projectId: this.projectId,
             dateCreated: this.dateCreated,
@@ -983,43 +994,37 @@ module.exports = class Task extends AbstractTask {
         });
     }
 
-    callWebhooks() {
+    callWebhooks(resourceType) {
         // Hooks can be passed via command line
         // or for each individual task
-        const hooks = [this.webhook, config.webhook];
+        // const hooks = [this.webhook, config.webhook];
+        const hooks = [this.webhook];
+        if (resourceType) json.resourceType = resourceType;
 
-        this.readImagesDatabase((err, images) => {
-            if (err) logger.warn(err); // Continue with callback
-            if (!images) images = [];
-
-            let json = this.getInfo();
-            json.images = images;
-
-            hooks.forEach((hook) => {
-                if (hook && hook.length > 3) {
-                    const notifyCallback = (attempt) => {
-                        if (attempt > 5) {
+        hooks.forEach((hook) => {
+            if (hook && hook.length > 3) {
+                const notifyCallback = (attempt) => {
+                    if (attempt > 5) {
+                        logger.warn(
+                            `Webhook invokation failed, will not retry: ${hook}`
+                        );
+                        return;
+                    }
+                    request.put(hook, { json }, (error, response) => {
+                        if (error || response.statusCode != 200) {
                             logger.warn(
-                                `Webhook invokation failed, will not retry: ${hook}`
+                                `Webhook invokation failed, will retry in a bit: ${hook}`
                             );
-                            return;
+                            setTimeout(() => {
+                                notifyCallback(attempt + 1);
+                            }, attempt * 5000);
+                        } else {
+                            logger.debug(`Webhook invoked: ${hook}`);
                         }
-                        request.post(hook, { json }, (error, response) => {
-                            if (error || response.statusCode != 200) {
-                                logger.warn(
-                                    `Webhook invokation failed, will retry in a bit: ${hook}`
-                                );
-                                setTimeout(() => {
-                                    notifyCallback(attempt + 1);
-                                }, attempt * 5000);
-                            } else {
-                                logger.debug(`Webhook invoked: ${hook}`);
-                            }
-                        });
-                    };
-                    notifyCallback(0);
-                }
-            });
+                    });
+                };
+                notifyCallback(0);
+            }
         });
     }
 

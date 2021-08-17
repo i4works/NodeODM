@@ -6,6 +6,7 @@ const kill = require("tree-kill");
 const assert = require("assert");
 const rmdir = require("rimraf");
 const fs = require("fs");
+const request = require("request");
 
 const config = require("../config");
 const AbstractTask = require("./AbstractTask");
@@ -147,6 +148,27 @@ module.exports = class SingularTask extends AbstractTask {
     start(done) {
         const parsedOptions = this.options.reduce((r, c) => {r[c.name] = c.value; return r;}, {});
         const finished = (err) => {
+
+            //TODO: Maybe move this here?
+            // const taskOutputFile = path.join(
+            //     this.getProjectFolderPath(),
+            //     "task_output.txt"
+            // );
+
+
+            // tasks.push(saveTaskOutput(taskOutputFile));
+
+            // tasks.push(done => {
+            //     S3.uploadSingle(
+            //         taskOutputPath,
+            //         taskOutputFile,
+            //         (err) => {
+            //             done(err);
+            //         },
+            //         () => { /* we've already saved task output file, no need to write */ }
+            //     )
+            // });
+
             this.updateProgress(100);
             this.stopTrackingProcessingTime();
             done(err);
@@ -502,10 +524,8 @@ module.exports = class SingularTask extends AbstractTask {
     callWebhooks() {
         // Hooks can be passed via command line
         // or for each individual task
-        const hooks = [this.webhook, config.webhook];
-
-        // TODO sent required information to SG, e.g. folder size for PotreeConverter.
-
+        // const hooks = [this.webhook, config.webhook];
+        const hooks = [this.webhook];
         let json = this.getInfo();
 
         hooks.forEach((hook) => {
@@ -517,7 +537,7 @@ module.exports = class SingularTask extends AbstractTask {
                         );
                         return;
                     }
-                    request.post(hook, {json}, (error, response) => {
+                    request.put(hook, {json}, (error, response) => {
                         if (error || response.statusCode != 200) {
                             logger.warn(
                                 `Webhook invokation failed, will retry in a bit: ${hook}`
