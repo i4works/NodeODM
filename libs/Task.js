@@ -295,10 +295,28 @@ module.exports = class Task extends AbstractTask {
     // Starts processing the task with OpenDroneMap
     // This will spawn a new process.
     start(done) {
-        const finished = (err) => {
-            this.updateProgress(100);
-            this.stopTrackingProcessingTime();
-            done(err);
+
+        const finished = (error) => {
+            const taskOutputFile = path.join(
+                this.getProjectFolderPath(),
+                "task_output.txt"
+            );
+
+            fs.writeFileSync(taskOutputFile, this.output.join("\n"));
+
+            S3.uploadSingle(
+                `project/${this.projectId}/process/${this.uuid}/task_output.txt`,
+                taskOutputFile,
+                (uploadError) => {
+                    if (uploadError) console.log(uploadError);
+                    else console.log('task_output file sent...');
+
+                    this.updateProgress(100);
+                    this.stopTrackingProcessingTime();
+                    done(error);
+                },
+                () => {}
+            )
         };
 
         const postProcess = () => {
@@ -714,6 +732,11 @@ module.exports = class Task extends AbstractTask {
                             )
                         });
 
+                        tasks.push(done => {
+                            this.callWebhooks('mesh');
+                            done(null);
+                        });                          
+
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/nexus/nexus.nxz`,
@@ -727,28 +750,10 @@ module.exports = class Task extends AbstractTask {
                         });
 
                         tasks.push(done => {
-                            this.callWebhooks('mesh');
+                            this.callWebhooks('nexus');
                             done(null);
                         });                         
                     }
-
-                    const taskOutputFile = path.join(
-                        this.getProjectFolderPath(),
-                        "task_output.txt"
-                    );
-
-                    tasks.push(saveTaskOutput(taskOutputFile));
-
-                    tasks.push(done => {
-                        S3.uploadSingle(
-                            `project/${this.projectId}/process/${this.uuid}/task_output.txt`,
-                            taskOutputFile,
-                            (err) => {
-                                done(err);
-                            },
-                            () => { /* we've already saved task output file, no need to write */ }
-                        )
-                    });
                 }
             }
 
@@ -999,6 +1004,8 @@ module.exports = class Task extends AbstractTask {
         // or for each individual task
         // const hooks = [this.webhook, config.webhook];
         const hooks = [this.webhook];
+        let json = this.getInfo();
+
         if (resourceType) json.resourceType = resourceType;
 
         hooks.forEach((hook) => {
@@ -1010,7 +1017,7 @@ module.exports = class Task extends AbstractTask {
                         );
                         return;
                     }
-                    request.put(hook, { json }, (error, response) => {
+                    request.post(hook, { json }, (error, response) => {
                         if (error || response.statusCode != 200) {
                             logger.warn(
                                 `Webhook invokation failed, will retry in a bit: ${hook}`

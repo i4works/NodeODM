@@ -39,7 +39,7 @@ module.exports = class SingularTask extends AbstractTask {
         assert(options.length, 'options must be set');
 
         this.uuid = uuid;
-        this.projectId = projectId;
+        this.projectId = parseInt(projectId, 10);
         this.options = options;
         this.taskType = taskType;
         this.webhook = webhook;
@@ -147,48 +147,32 @@ module.exports = class SingularTask extends AbstractTask {
 
     start(done) {
         const parsedOptions = this.options.reduce((r, c) => {r[c.name] = c.value; return r;}, {});
-        const finished = (err) => {
+        let taskOutputPath;
 
-            //TODO: Maybe move this here?
-            // const taskOutputFile = path.join(
-            //     this.getProjectFolderPath(),
-            //     "task_output.txt"
-            // );
+        const finished = (error) => {
+            const taskOutputFile = path.join(
+                this.getProjectFolderPath(),
+                "task_output.txt"
+            );
 
+            fs.writeFileSync(taskOutputFile, this.output.join("\n"));
 
-            // tasks.push(saveTaskOutput(taskOutputFile));
+            S3.uploadSingle(
+                taskOutputPath,
+                taskOutputFile,
+                (uploadError) => {
+                    if (uploadError) console.log(uploadError);
+                    else console.log('task_output file sent...');
 
-            // tasks.push(done => {
-            //     S3.uploadSingle(
-            //         taskOutputPath,
-            //         taskOutputFile,
-            //         (err) => {
-            //             done(err);
-            //         },
-            //         () => { /* we've already saved task output file, no need to write */ }
-            //     )
-            // });
-
-            this.updateProgress(100);
-            this.stopTrackingProcessingTime();
-            done(err);
+                    this.updateProgress(100);
+                    this.stopTrackingProcessingTime();
+                    done(error);
+                },
+                () => {}
+            )
         };
 
         const tasks = [];
-
-        const saveTaskOutput = (destination) => {
-            return (done) => {
-                fs.writeFile(destination, this.output.join("\n"), (err) => {
-                    if (err)
-                        logger.info(
-                            `Cannot write log at ${destination}, skipping...`
-                        );
-                    done();
-                });
-            };
-        };
-
-        let taskOutputPath;
 
         if (this.status.code === statusCodes.QUEUED) {
             this.startTrackingProcessingTime();
@@ -359,25 +343,6 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
             }
 
-            const taskOutputFile = path.join(
-                this.getProjectFolderPath(),
-                "task_output.txt"
-            );
-
-
-            tasks.push(saveTaskOutput(taskOutputFile));
-
-            tasks.push(done => {
-                S3.uploadSingle(
-                    taskOutputPath,
-                    taskOutputFile,
-                    (err) => {
-                        done(err);
-                    },
-                    () => { /* we've already saved task output file, no need to write */ }
-                )
-            });
-
             async.series(tasks, (err) => {
                 if (!err) {
                     this.setStatus(statusCodes.COMPLETED);
@@ -528,6 +493,7 @@ module.exports = class SingularTask extends AbstractTask {
         const hooks = [this.webhook];
         let json = this.getInfo();
 
+
         hooks.forEach((hook) => {
             if (hook && hook.length > 3) {
                 const notifyCallback = (attempt) => {
@@ -537,8 +503,10 @@ module.exports = class SingularTask extends AbstractTask {
                         );
                         return;
                     }
-                    request.put(hook, {json}, (error, response) => {
+
+                    request.post(hook, {json}, (error, response) => {
                         if (error || response.statusCode != 200) {
+                
                             logger.warn(
                                 `Webhook invokation failed, will retry in a bit: ${hook}`
                             );
