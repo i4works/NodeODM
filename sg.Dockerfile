@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 run mkdir /Workspace
 
 USER root
-RUN apt-get update && apt-get install -y -qq --no-install-recommends curl unzip git software-properties-common cmake gcc g++ make libtbb-dev qt5-default libglew-dev libboost-dev libboost-program-options-dev libboost-thread-dev libboost-system-dev libboost-iostreams-dev libboost-filesystem-dev libgeotiff-dev libgdal-dev libproj-dev
+RUN apt-get update && apt-get install -y -qq --no-install-recommends curl unzip git cmake gcc g++ make libtbb-dev qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libglew-dev libboost-dev libboost-program-options-dev libboost-thread-dev libboost-system-dev libboost-iostreams-dev libboost-filesystem-dev libgeotiff-dev libgdal-dev libproj-dev ca-certificates
 
 WORKDIR "/Workspace"
 RUN git clone https://github.com/i4Works/PotreeConverter.git /Workspace/PotreeConverter
@@ -45,17 +45,22 @@ RUN unzip ./IfcConvert.zip
 WORKDIR "/Workspace/LAStools"
 RUN make
 
+WORKDIR "/Workspace"
+RUN git clone https://github.com/i4works/OpenSfM
+WORKDIR "/Workspace/OpenSfM"
+RUN git checkout sg-patch
+
 FROM opendronemap/odm:latest
 MAINTAINER Piero Toffanin <pt@masseranolabs.com>
 
 EXPOSE 3000
 
 USER root
-RUN apt-get update && apt-get install -y curl gpg-agent qt5-default
+RUN apt-get update && apt-get install -y curl gpg-agent qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
 RUN curl --silent --location https://deb.nodesource.com/setup_10.x | bash -
 
 
-RUN apt-get install -y nodejs unzip p7zip-full && npm install -g nodemon && \
+RUN apt-get install -y nodejs npm unzip p7zip-full && npm install -g nodemon && \
     ln -s /code/SuperBuild/install/bin/pdal /usr/bin/pdal && \ 
     ln -s /code/SuperBuild/install/lib/liblaszip.so /usr/lib/liblaszip.so
 
@@ -69,6 +74,7 @@ COPY --from=SGDependencyBuilder /Workspace/nexus/build/src/nxsbuild/nxsbuild /us
 COPY --from=SGDependencyBuilder /Workspace/nexus/build/src/nxsedit/nxscompress /usr/bin/nxscompress
 COPY --from=SGDependencyBuilder /Workspace/IfcConvert /usr/bin/IfcConvert
 COPY --from=SGDependencyBuilder /Workspace/LAStools/bin/lasinfo /usr/bin/lasinfo
+COPY --from=SGDependencyBuilder /Workspace/OpenSfM/opensfm/report.py /code/SuperBuild/install/bin/opensfm/opensfm/report.py
 
 RUN npm install && mkdir tmp
 
