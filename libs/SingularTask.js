@@ -199,6 +199,7 @@ module.exports = class SingularTask extends AbstractTask {
 
                     tasks.push(this.runProcess("pointcloud_pre", { fileName }));
                     tasks.push(this.runProcess("pointcloud", { fileName }));
+                    tasks.push(this.runProcess("pointcloud_post", { fileName }));
 
 
                     tasks.push((cb) => {
@@ -376,6 +377,13 @@ module.exports = class SingularTask extends AbstractTask {
                     outDir: path.join(this.getProjectFolderPath(), "potree_pointcloud")
                 };
                 runner = processRunner.runPotreeConverter;
+                break;
+            case "pointcloud_post":
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), options.fileName),
+                    outputFile: path.join(this.getProjectFolderPath(), 'potree_pointcloud', 'metadata.json')
+                };
+                runner = processRunner.runFindSrs;
                 break;
             case "orthophoto":
                 opts = {

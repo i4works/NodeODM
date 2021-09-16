@@ -170,5 +170,11 @@ module.exports = {
         return ['-i', options.inputFile, '-repair_bb'];
     }, ['inputFile'],
         null,
+        false),
+
+    runFindSrs: makeRunner('/usr/bin/node', options => {
+        return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];
+    }, ['inputFile', 'outputFile'],
+        null,
         false)
 };

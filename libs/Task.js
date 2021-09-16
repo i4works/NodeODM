@@ -571,6 +571,9 @@ module.exports = class Task extends AbstractTask {
 
                 // convert
                 tasks.push(this.runPostProcess('pointcloud'));
+
+                // writes coord info into metadata.json
+                tasks.push(this.runPostProcess('pointcloud_post'));
             }
 
             if (this.projectId && allPaths.includes('odm_orthophoto') || allPaths.includes('odm_orthophoto/odm_orthophoto.tif')) {
@@ -880,6 +883,13 @@ module.exports = class Task extends AbstractTask {
                     outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
                 };
                 runner = processRunner.runPotreeConverter;
+                break;
+            case "pointcloud_post":
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
+                    outputFile: path.join(this.getProjectFolderPath(), 'potree_pointcloud', 'metadata.json')
+                };
+                runner = processRunner.runFindSrs;
                 break;
             case 'orthophoto':
                 opts = {
