@@ -671,6 +671,58 @@ module.exports = class Task extends AbstractTask {
                         tasks.push(done => {
                             this.callWebhooks('orthophoto');
                             done(null);
+                        });
+                    }
+
+                    if (allPaths.includes("odm_dem/dsm.tif")) {
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/dem/dsm.tif`,
+                                path.join(
+                                    this.getProjectFolderPath(),
+                                    "odm_dem",
+                                    "dsm.tif"
+                                ),
+                                (err) => {
+                                    if (!err)
+                                        this.output.push(
+                                            "Uploaded dsm, continuing"
+                                        );
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            );
+                        });
+
+                        tasks.push(done => {
+                            this.callWebhooks('dsm');
+                            done(null);
+                        });
+                    }
+
+                    if (allPaths.includes("odm_dem/dtm.tif")) {
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/process/${this.uuid}/dem/dtm.tif`,
+                                path.join(
+                                    this.getProjectFolderPath(),
+                                    "odm_dem",
+                                    "dtm.tif"
+                                ),
+                                (err) => {
+                                    if (!err)
+                                        this.output.push(
+                                            "Uploaded dtm, continuing"
+                                        );
+                                    done(err);
+                                },
+                                (output) => this.output.push(output)
+                            );
+                        });
+
+                        tasks.push(done => {
+                            this.callWebhooks('dtm');
+                            done(null);
                         });                          
                     }
 
@@ -729,7 +781,7 @@ module.exports = class Task extends AbstractTask {
                                 this.getAssetsArchivePath('mesh.zip'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded mesh.zip, continuing');
-                                    done (err);
+                                    done(err);
                                 },
                                 (output) => this.output.push(output)
                             )
@@ -743,10 +795,10 @@ module.exports = class Task extends AbstractTask {
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/nexus/nexus.nxz`,
-                                path.join(this.getProjectFolderPath(), "nexus",  "nexus.nxz"),
+                                path.join(this.getProjectFolderPath(), 'nexus',  'nexus.nxz'),
                                 (err) => {
-                                    if (!err) this.output.push('Uploaded nexus.nxz, finishing');
-                                    done (err);
+                                    if (!err) this.output.push('Uploaded nexus.nxz, continuing');
+                                    done(err);
                                 },
                                 (output) => this.output.push(output)
                             )
@@ -756,6 +808,61 @@ module.exports = class Task extends AbstractTask {
                             this.callWebhooks('nexus');
                             done(null);
                         });                         
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/proces/${this.uuid}/ai/tracks.csv`,
+                                path.join(this.getProjectFolderPath(), 'opensfm', 'tracks.csv'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded tracks.csv, continuing');
+                                    done(err);
+                                }
+                            )
+                        });
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/proces/${this.uuid}/ai/reconstruction.json`,
+                                path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded reconstruction.json, continuing');
+                                    done(err);
+                                }
+                            )
+                        });
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/proces/${this.uuid}/report/report.pdf`,
+                                path.join(this.getProjectFolderPath(), 'odm_report', 'report.pdf'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded report.pdf, continuing');
+                                    done(err);
+                                }
+                            )
+                        });
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/proces/${this.uuid}/report/stats.json`,
+                                path.join(this.getProjectFolderPath(), 'odm_report', 'stats.json'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded stats.json, finishing');
+                                    done(err);
+                                }
+                            )
+                        });
+
+                        tasks.push((done) => {
+                            S3.uploadSingle(
+                                `project/${this.projectId}/proces/${this.uuid}/report/shots.geojson`,
+                                path.join(this.getProjectFolderPath(), 'odm_report', 'shots.geojson'),
+                                (err) => {
+                                    if (!err) this.output.push('Uploaded shots.geojson, finishing');
+                                    done(err);
+                                }
+                            )
+                        });
                     }
                 }
             }
