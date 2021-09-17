@@ -480,19 +480,6 @@ module.exports = class Task extends AbstractTask {
                 };
             };
 
-
-            const saveTaskOutput = (destination) => {
-                return (done) => {
-                    fs.writeFile(destination, this.output.join("\n"), (err) => {
-                        if (err)
-                            logger.info(
-                                `Cannot write log at ${destination}, skipping...`
-                            );
-                        done();
-                    });
-                };
-            };
-
             // All paths are relative to the project directory (./data/<uuid>/)
             let allPaths = [
                 "odm_orthophoto/odm_orthophoto.tif",
@@ -813,7 +800,7 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/proces/${this.uuid}/ai/tracks.csv`,
+                                `project/${this.projectId}/process/${this.uuid}/ai/tracks.csv`,
                                 path.join(this.getProjectFolderPath(), 'opensfm', 'tracks.csv'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded tracks.csv, continuing');
@@ -824,7 +811,7 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/proces/${this.uuid}/ai/reconstruction.json`,
+                                `project/${this.projectId}/process/${this.uuid}/ai/reconstruction.json`,
                                 path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded reconstruction.json, continuing');
@@ -835,7 +822,7 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/proces/${this.uuid}/report/report.pdf`,
+                                `project/${this.projectId}/process/${this.uuid}/report/report.pdf`,
                                 path.join(this.getProjectFolderPath(), 'odm_report', 'report.pdf'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded report.pdf, continuing');
@@ -846,7 +833,7 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/proces/${this.uuid}/report/stats.json`,
+                                `project/${this.projectId}/process/${this.uuid}/report/stats.json`,
                                 path.join(this.getProjectFolderPath(), 'odm_report', 'stats.json'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded stats.json, finishing');
@@ -857,7 +844,7 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push((done) => {
                             S3.uploadSingle(
-                                `project/${this.projectId}/proces/${this.uuid}/report/shots.geojson`,
+                                `project/${this.projectId}/process/${this.uuid}/report/shots.geojson`,
                                 path.join(this.getProjectFolderPath(), 'odm_report', 'shots.geojson'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded shots.geojson, finishing');
@@ -891,6 +878,13 @@ module.exports = class Task extends AbstractTask {
             }, {});
 
             runnerOptions["project-path"] = fs.realpathSync(Directories.data);
+
+            if (this.outputs.length && this.outputs.includes("odm_dem/dtm.tif")) 
+                runnerOptions["dtm"] = true;
+            
+
+            if (this.outputs.length && this.outputs.includes("odm_dem/dsm.tif"))
+                runnerOptions["dsm"] = true;
 
             const downloadTasks = this.imageLinks.length ? this.imageLinks.map(dlLink => cb => {
                 const imageName = dlLink.split('/').pop();
