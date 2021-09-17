@@ -229,6 +229,8 @@ module.exports = class Task extends AbstractTask {
         if (globalProgress >= this.progress) {
             this.progress = globalProgress;
         }
+
+        this.callWebhooks();
     }
 
     updateProcessingTime(resetTime) {
