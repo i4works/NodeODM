@@ -871,6 +871,7 @@ module.exports = class Task extends AbstractTask {
             this.startTrackingProcessingTime();
             this.dateStarted = new Date().getTime();
             this.setStatus(statusCodes.RUNNING);
+            this.callWebhooks();
 
             let runnerOptions = this.options.reduce((result, opt) => {
                 result[opt.name] = opt.value;
