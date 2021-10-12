@@ -24,13 +24,13 @@ function execute() {
                 return console.error('cannot find wkt');
             }
 
-            const wkt = parsed.summary.srs.wkt;
+            const wkt = JSON.stringify(parsed.summary.srs.wkt);
             
             // write coord into metadata.json
             fs.readFile(process.argv[3], 'utf8', (err, data) => {
                 if (err) return console.error(err);
 
-                const result = data.replace(`"projection": ""`, `"projection": "${wkt}"`);
+                const result = data.replace(`"projection": ""`, `"projection": ${wkt}`);
 
                 fs.writeFile(process.argv[3], result, 'utf8', err => {
                     if (err) return console.error(err);
