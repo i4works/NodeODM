@@ -65,6 +65,8 @@ module.exports = class SingularTask extends AbstractTask {
         if (globalProgress >= this.progress) {
             this.progress = globalProgress;
         }
+
+        this.callWebhooks();
     }
 
     getProjectFolderPath() {

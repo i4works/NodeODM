@@ -213,9 +213,6 @@ class TaskManager{
             if (task){
                 this.addToRunningQueue(task);
                 task.start(() => {
-
-                    task.callWebhooks();
-
                     this.removeFromRunningQueue(task);
                     this.processNextTask();
                 });
