@@ -203,7 +203,6 @@ module.exports = class SingularTask extends AbstractTask {
                     tasks.push(this.runProcess("pointcloud", { fileName }));
                     tasks.push(this.runProcess("pointcloud_post", { fileName }));
 
-
                     tasks.push((cb) => {
                         const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
 
@@ -299,15 +298,65 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
                 }
                 case 'sg-compare': {
-                    const {prevResourceId, nextResourceId, outputResourceId} = parsedOptions;
+                    const {prevResourceId, prevResourceFilename, nextResourceId, nextResourceFilename, outputResourcePointcloudId, outputResourcePotreePointcloudId} = parsedOptions;
 
-                    taskOutputPath = ``; // TODO set this properly
+                    taskOutputPath = `project/${this.projectId}/resource/pointcloud/${outputResourcePointcloudId}/task_output.txt`;
 
-                    // TODO download pointclouds 
+                    tasks.push(cb => {
+                        this.output.push('downloading previous pointcloud...')
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/pointcloud/${prevResourceId}/${prevResourceFilename}`,
+                            path.join(this.getProjectFolderPath(), `prev_${prevResourceFilename}`),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading pointcloud, continuing');
+                                cb(err);
+                            },
+                        )
+                    });
 
-                    tasks.push(this.runProcess("sg-compare"))
+                    tasks.push(cb => {
+                        this.output.push('downloading next pointcloud...')
+                        S3.downloadPath(
+                            `project/${this.projectId}/resource/pointcloud/${nextResourceId}/${nextResourceFilename}`,
+                            path.join(this.getProjectFolderPath(), `next_${nextResourceFilename}`),
+                            (err) => {
+                                if (!err) this.output.push('Done downloading pointcloud, continuing');
+                                cb(err);
+                            },
+                        )
+                    });                    
 
-                    // TODO run potreeconverter 
+                    tasks.push(this.runProcess("sg-compare", {prevResourceFilename, nextResourceFilename}));
+                    tasks.push(this.runProcess("pointcloud", { fileName: 'pointcloud.las' }));
+                    tasks.push(this.runProcess("pointcloud_post", { fileName: 'pointcloud.las' }));
+
+                    tasks.push((cb) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/resource/pointcloud/${outputResourcePointcloudId}/pointcloud.las`,
+                            path.join(this.getProjectFolderPath(), 'pointcloud.las'),
+                            (err) => {
+                                if (!err) this.output.push('Done uploading pointcloud, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });                    
+
+                    tasks.push((cb) => {
+                        const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
+
+                        S3.uploadPaths(
+                            path.join(this.getProjectFolderPath(),"potree_pointcloud"),
+                            config.s3Bucket,
+                            `project/${this.projectId}/resource/potree_pointcloud/${outputResourcePotreePointcloudId}`,
+                            potreePointcloudFolderPaths,
+                            (err) => {
+                                if (!err) this.output.push('Done uploading potree_pointcloud, finalizing');
+                                cb(err);
+                            },
+                            (output) => this.output.push(output)
+                        )
+                    });                    
 
                     break;
                 }
@@ -417,8 +466,12 @@ module.exports = class SingularTask extends AbstractTask {
                 runner = processRunner.runIfcConverter;
                 break;
             case "sg-compare":
-                // TODO here
-                return (done) => done();
+                opts = {
+                    prevFile: path.join(this.getProjectFolderPath(), "prev_" + options.prevResourceFilename),
+                    nextFile: path.join(this.getProjectFolderPath(), "next_" + options.nextResourceFilename),
+                    outputFile: path.join(this.getProjectFolderPath(), "pointcloud.las")
+                };
+                runner = processRunner.runSgCompare;
                 break;
             default:
                 return (done) => done();

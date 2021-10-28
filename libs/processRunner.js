@@ -176,5 +176,11 @@ module.exports = {
         return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];
     }, ['inputFile', 'outputFile'],
         null,
-        false)
+        false),
+
+    runSgCompare: makeRunner('python', (options) => {
+        return ['/Workspace/sg-compare/main.py', '-t1', options.prevFile, '-t2', options.nextFile, '-o', options.outputFile];
+    }, ['prevFile', 'nextFile', 'outputFile'],
+        null,
+        false),
 };

@@ -108,7 +108,7 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
             "pointcloud": ["inputResourceId", "outputResourceId", "fileName"],
             "orthophoto": ["inputResourceId"],
             "mesh": ["inputResourceId", "outputResourceId"],
-            "sg-compare": ["prevResourceId", "nextResourceId", "outputResourceId"],
+            "sg-compare": ["prevResourceId", "nextResourceId", "outputResourcePointcloudId", "outputResourcePotreePointcloudId", "prevResourceFilename", "nextResourceFilename"],
             "ifc-convert": ["inputResourceId", "outputResourceId"]
         };
 
@@ -133,7 +133,6 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
             } else {
                 resultingOptions.push({ name: option, value: matchingOption.value });
             }
-
         }
 
         cb(null, resultingOptions);
