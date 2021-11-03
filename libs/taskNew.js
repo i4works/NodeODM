@@ -108,7 +108,7 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
             "pointcloud": ["inputResourceId", "outputResourceId", "fileName"],
             "orthophoto": ["inputResourceId"],
             "mesh": ["inputResourceId", "outputResourceId"],
-            "sg-compare": ["prevResourceId", "nextResourceId", "outputResourcePointcloudId", "outputResourcePotreePointcloudId", "prevResourceFilename", "nextResourceFilename"],
+            "sg-compare": ["outputResourcePointcloudId", "outputResourcePotreePointcloudId", "prevResourceFilepath", "nextResourceFilepath"],
             "ifc-convert": ["inputResourceId", "outputResourceId"]
         };
 

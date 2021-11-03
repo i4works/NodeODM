@@ -298,14 +298,16 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
                 }
                 case 'sg-compare': {
-                    const {prevResourceId, prevResourceFilename, nextResourceId, nextResourceFilename, outputResourcePointcloudId, outputResourcePotreePointcloudId} = parsedOptions;
+                    const {prevResourceFilepath, nextResourceFilepath, outputResourcePointcloudId, outputResourcePotreePointcloudId} = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/pointcloud/${outputResourcePointcloudId}/task_output.txt`;
+                    const prevResourceFilename = path.basename(prevResourceFilepath);
+                    const nextResourceFilename = path.basename(nextResourceFilepath);
 
                     tasks.push(cb => {
                         this.output.push('downloading previous pointcloud...')
                         S3.downloadPath(
-                            `project/${this.projectId}/resource/pointcloud/${prevResourceId}/${prevResourceFilename}`,
+                            prevResourceFilepath,
                             path.join(this.getProjectFolderPath(), `prev_${prevResourceFilename}`),
                             (err) => {
                                 if (!err) this.output.push('Done downloading pointcloud, continuing');
@@ -317,7 +319,7 @@ module.exports = class SingularTask extends AbstractTask {
                     tasks.push(cb => {
                         this.output.push('downloading next pointcloud...')
                         S3.downloadPath(
-                            `project/${this.projectId}/resource/pointcloud/${nextResourceId}/${nextResourceFilename}`,
+                            nextResourceFilepath,
                             path.join(this.getProjectFolderPath(), `next_${nextResourceFilename}`),
                             (err) => {
                                 if (!err) this.output.push('Done downloading pointcloud, continuing');
