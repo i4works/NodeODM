@@ -301,14 +301,14 @@ module.exports = class SingularTask extends AbstractTask {
                     const {prevResourceFilepath, nextResourceFilepath, outputResourcePointcloudId, outputResourcePotreePointcloudId} = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/pointcloud/${outputResourcePointcloudId}/task_output.txt`;
-                    const prevResourceFilename = path.basename(prevResourceFilepath);
-                    const nextResourceFilename = path.basename(nextResourceFilepath);
+                    let prevResourceFilename = `prev_${path.basename(prevResourceFilepath)}`;
+                    let nextResourceFilename = `next_${path.basename(nextResourceFilepath)}`;
 
                     tasks.push(cb => {
-                        this.output.push('downloading previous pointcloud...')
+                        this.output.push('downloading previous pointcloud...');
                         S3.downloadPath(
                             prevResourceFilepath,
-                            path.join(this.getProjectFolderPath(), `prev_${prevResourceFilename}`),
+                            path.join(this.getProjectFolderPath(), prevResourceFilename),
                             (err) => {
                                 if (!err) this.output.push('Done downloading pointcloud, continuing');
                                 cb(err);
@@ -317,18 +317,35 @@ module.exports = class SingularTask extends AbstractTask {
                     });
 
                     tasks.push(cb => {
-                        this.output.push('downloading next pointcloud...')
+                        this.output.push('downloading next pointcloud...');
                         S3.downloadPath(
                             nextResourceFilepath,
-                            path.join(this.getProjectFolderPath(), `next_${nextResourceFilename}`),
+                            path.join(this.getProjectFolderPath(), nextResourceFilename),
                             (err) => {
                                 if (!err) this.output.push('Done downloading pointcloud, continuing');
                                 cb(err);
                             },
                         )
-                    });                    
+                    });    
+                    
+                    //this operation prevents replaced filename downloads from s3
+                    let updatedPrevResourceFilename, updatedNextResourceFilename;
 
-                    tasks.push(this.runProcess("sg-compare", {prevResourceFilename, nextResourceFilename}));
+                    if (path.extname(prevResourceFilename) === '.laz') {
+                        tasks.push(this.runProcess('pdal-translate', { inputFilename: prevResourceFilename, outputFilename: prevResourceFilename.replace('.laz', '.las') }));
+                        updatedPrevResourceFilename = prevResourceFilename.replace('.laz', '.las');
+                    } else {
+                        updatedPrevResourceFilename = prevResourceFilename;
+                    }
+
+                    if (path.extname(nextResourceFilename) === '.laz') {
+                        tasks.push(this.runProcess('pdal-translate', { inputFilename: nextResourceFilename, outputFilename: nextResourceFilename.replace('.laz', '.las') }));
+                        updatedNextResourceFilename = nextResourceFilename.replace('.laz', '.las');
+                    } else {
+                        updatedNextResourceFilename = nextResourceFilename;
+                    }
+
+                    tasks.push(this.runProcess("sg-compare", {prevResourceFilename: updatedPrevResourceFilename, nextResourceFilename: updatedNextResourceFilename, outputResourcePointcloudId: outputResourcePointcloudId}));
                     tasks.push(this.runProcess("pointcloud", { fileName: 'pointcloud.las' }));
                     tasks.push(this.runProcess("pointcloud_post", { fileName: 'pointcloud.las' }));
 
@@ -469,12 +486,19 @@ module.exports = class SingularTask extends AbstractTask {
                 break;
             case "sg-compare":
                 opts = {
-                    prevFile: path.join(this.getProjectFolderPath(), "prev_" + options.prevResourceFilename),
-                    nextFile: path.join(this.getProjectFolderPath(), "next_" + options.nextResourceFilename),
+                    prevFile: path.join(this.getProjectFolderPath(), options.prevResourceFilename),
+                    nextFile: path.join(this.getProjectFolderPath(), options.nextResourceFilename),
                     outputFile: path.join(this.getProjectFolderPath(), "pointcloud.las")
                 };
                 runner = processRunner.runSgCompare;
                 break;
+            case "pdal-translate":
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), options.inputFilename),
+                    outputFile: path.join(this.getProjectFolderPath(), options.outputFilename),
+                };
+                runner = processRunner.runPdalTranslate;
+                break;                
             default:
                 return (done) => done();
         }

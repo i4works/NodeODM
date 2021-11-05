@@ -183,4 +183,10 @@ module.exports = {
     }, ['prevFile', 'nextFile', 'outputFile'],
         null,
         false),
+
+    runPdalTranslate: makeRunner('pdal', (options) => {
+        return ['translate', '-i', options.inputFile, '-o', options.outputFile];
+    }, ['inputFile', 'outputFile'],
+        null,
+        false),
 };
