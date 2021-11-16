@@ -552,6 +552,9 @@ module.exports = class Task extends AbstractTask {
 
             // Sahagozu specific postProcesses
 
+            // TODO
+            // if options include end-with with value opensfm, call upload reconstruction.json then notify webhook and stop here(return)
+
             if (this.projectId && allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                 // pointcloud output is wanted, run necessary post processing
                 
