@@ -33,9 +33,12 @@ const request = require("request");
 const utils = require("./utils");
 const archiver = require("archiver");
 
-const stream = require('stream');
-const readline = require('readline');
-const AbstractTask = require('./AbstractTask');
+const stream = require("stream");
+const { parser } = require("stream-json");
+const { ignore } = require("stream-json/filters/Ignore");
+const { streamArray } = require("stream-json/streamers/StreamArray");
+const readline = require("readline");
+const AbstractTask = require("./AbstractTask");
 
 
 const statusCodes = require("./statusCodes");
@@ -52,10 +55,10 @@ module.exports = class Task extends AbstractTask {
         outputs = [],
         output,
         dateCreated = new Date().getTime(),
-        done = () => {}
+        done = () => { }
     ) {
         super();
-        
+
         assert(projectId !== undefined, 'projectId must be set');
         assert(uuid !== undefined, "uuid must be set");
         assert(done !== undefined, "ready must be set");
@@ -112,22 +115,17 @@ module.exports = class Task extends AbstractTask {
                                 }
                             });
                             logger.debug(
-                                `Found ${
-                                    this.gcpFiles.length
-                                } GCP files (${this.gcpFiles.join(" ")}) for ${
-                                    this.uuid
+                                `Found ${this.gcpFiles.length
+                                } GCP files (${this.gcpFiles.join(" ")}) for ${this.uuid
                                 }`
                             );
                             logger.debug(
-                                `Found ${
-                                    this.geoFiles.length
-                                } GEO files (${this.geoFiles.join(" ")}) for ${
-                                    this.uuid
+                                `Found ${this.geoFiles.length
+                                } GEO files (${this.geoFiles.join(" ")}) for ${this.uuid
                                 }`
                             );
                             logger.debug(
-                                `Found ${
-                                    this.imageGroupsFiles.length
+                                `Found ${this.imageGroupsFiles.length
                                 } image groups files (${this.imageGroupsFiles.join(
                                     " "
                                 )}) for ${this.uuid}`
@@ -317,7 +315,7 @@ module.exports = class Task extends AbstractTask {
                     this.stopTrackingProcessingTime();
                     done(error);
                 },
-                () => {}
+                () => { }
             )
         };
 
@@ -552,12 +550,37 @@ module.exports = class Task extends AbstractTask {
 
             // Sahagozu specific postProcesses
 
-            // TODO
-            // if options include end-with with value opensfm, call upload reconstruction.json then notify webhook and stop here(return)
+
+            const endWithOption = this.options.filter(o => o.name === "end-with").pop();
+
+            if (endWithOption && endWithOption.value === "opensfm") {
+                const pipeline = fs.createReadStream(path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json')).pipe(parser());
+
+                // filter out points array to reduce size
+                const jsonStream = pipeline.pipe(ignore({ filter: /points/ })).pipe(streamArray())
+
+                const reconstructionArray = [];
+                jsonStream.on("data", ({ value }) => reconstructionArray.push(value));
+                jsonStream.on("end", () => {
+                    S3.uploadSingle(
+                        `project/${this.projectId}/process/${this.uuid}/ai/reconstruction.json`,
+                        reconstructionArray,
+                        (err) => {
+                            if (!err) this.output.push('Uploaded reconstruction.json, continuing');
+
+                            this.stopTrackingProcessingTime();
+                            this.setStatus(statusCodes.COMPLETED);
+                            this.callWebhooks();
+                            done();
+                        }
+                    )
+                });
+                return;
+            }
 
             if (this.projectId && allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                 // pointcloud output is wanted, run necessary post processing
-                
+
                 // sometimes output pointcloud has some points that are not in the bounding box of the header. This should fix those.
                 tasks.push(this.runPostProcess('pointcloud_pre'));
 
@@ -573,7 +596,7 @@ module.exports = class Task extends AbstractTask {
                 tasks.push(this.runPostProcess('orthophoto'));
             }
 
-            if (this.projectId && allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')){
+            if (this.projectId && allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
                 // mesh output is wanted, run necessary post processing
                 if (!fs.existsSync(path.join(this.getProjectFolderPath(), 'nexus'))) {
                     fs.mkdirSync(path.join(this.getProjectFolderPath(), 'nexus'));
@@ -620,7 +643,7 @@ module.exports = class Task extends AbstractTask {
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/pointcloud/${this.uuid}_pointcloud.laz`,
-                                path.join(this.getProjectFolderPath(),'odm_georeferencing','odm_georeferenced_model.laz'),
+                                path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded pointcloud, continuing')
                                     done(err);
@@ -651,7 +674,7 @@ module.exports = class Task extends AbstractTask {
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/orthophoto/orthophoto-cog.tif`,
-                                path.join(this.getProjectFolderPath(),'odm_orthophoto','odm_orthophoto-cog.tif'),
+                                path.join(this.getProjectFolderPath(), 'odm_orthophoto', 'odm_orthophoto-cog.tif'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded orthophoto, continuing');
                                     done(err);
@@ -715,13 +738,13 @@ module.exports = class Task extends AbstractTask {
                         tasks.push(done => {
                             this.callWebhooks('dtm');
                             done(null);
-                        });                          
+                        });
                     }
 
                     if (allPaths.includes('odm_texturing') || allPaths.includes('odm_texturing/odm_textured_model.obj')) {
                         const meshCanditatePaths = fs.readdirSync(path.join(this.getProjectFolderPath(), 'odm_texturing'));
                         const meshPaths = meshCanditatePaths.filter(p => {
-                            if (!p.includes('geo')) 
+                            if (!p.includes('geo'))
                                 return false;
 
                             if (p.substr(-4) === 'conf')
@@ -733,11 +756,11 @@ module.exports = class Task extends AbstractTask {
 
                         tasks.push(done => {
                             const mtlPath = path.join(this.getProjectFolderPath(), 'odm_texturing', 'odm_textured_model_geo.mtl');
-                            const mtlFile = fs.readFileSync(mtlPath, { encoding: 'utf-8'});
+                            const mtlFile = fs.readFileSync(mtlPath, { encoding: 'utf-8' });
 
-                            fs.writeFileSync(mtlPath, mtlFile.replace(/odm_textured_model_geo/g, 'mesh', ));
+                            fs.writeFileSync(mtlPath, mtlFile.replace(/odm_textured_model_geo/g, 'mesh',));
 
-                            const modifiedMeshPaths = meshPaths.map(f => { 
+                            const modifiedMeshPaths = meshPaths.map(f => {
                                 const newPath = f.replace('odm_textured_model_geo', 'mesh');
                                 fs.renameSync(f, newPath);
 
@@ -782,12 +805,12 @@ module.exports = class Task extends AbstractTask {
                         tasks.push(done => {
                             this.callWebhooks('mesh');
                             done(null);
-                        });                          
+                        });
 
                         tasks.push((done) => {
                             S3.uploadSingle(
                                 `project/${this.projectId}/process/${this.uuid}/nexus/nexus.nxz`,
-                                path.join(this.getProjectFolderPath(), 'nexus',  'nexus.nxz'),
+                                path.join(this.getProjectFolderPath(), 'nexus', 'nexus.nxz'),
                                 (err) => {
                                     if (!err) this.output.push('Uploaded nexus.nxz, continuing');
                                     done(err);
@@ -799,7 +822,7 @@ module.exports = class Task extends AbstractTask {
                         tasks.push(done => {
                             this.callWebhooks('nexus');
                             done(null);
-                        });                         
+                        });
 
                         tasks.push((done) => {
                             S3.uploadSingle(
@@ -883,9 +906,9 @@ module.exports = class Task extends AbstractTask {
 
             runnerOptions["project-path"] = fs.realpathSync(Directories.data);
 
-            if (this.outputs.length && this.outputs.includes("odm_dem/dtm.tif")) 
+            if (this.outputs.length && this.outputs.includes("odm_dem/dtm.tif"))
                 runnerOptions["dtm"] = true;
-            
+
 
             if (this.outputs.length && this.outputs.includes("odm_dem/dsm.tif"))
                 runnerOptions["dsm"] = true;
@@ -897,7 +920,7 @@ module.exports = class Task extends AbstractTask {
                 S3.downloadPath(dlLink, p, (err) => {
                     if (err) cb(err);
                     else cb(null)
-                }) 
+                })
             }) : [cb => cb(null)];
 
             async.parallelLimit(downloadTasks, 4, (err) => {
@@ -973,7 +996,7 @@ module.exports = class Task extends AbstractTask {
         }
     }
 
-    runPostProcess (type) {
+    runPostProcess(type) {
         let opts;
         let runner;
 

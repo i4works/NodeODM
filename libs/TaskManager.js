@@ -90,7 +90,11 @@ class TaskManager{
 
         for (let uuid in this.tasks){
             let task = this.tasks[uuid];
-            // TODO if task has an option end-width = opensfm , do not delete it 
+
+            const endWithOption = task.options.filter(o => o.name === "end-with").pop();
+            if (endWithOption && endWithOption.value === "opensfm") {
+                continue;
+            }
 
             let dateFinished = task.dateCreated;
             if (task.processingTime > 0) dateFinished += task.processingTime;

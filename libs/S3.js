@@ -264,7 +264,7 @@ module.exports = {
                     {
                         Bucket: config.s3Bucket,
                         Key: key,
-                        Body: fs.createReadStream(path),
+                        Body: typeof path === "string" ? fs.createReadStream(path) : JSON.stringify(path),
                         ACL: config.s3ACL,
                     },
                     { partSize, queueSize: concurrency },
