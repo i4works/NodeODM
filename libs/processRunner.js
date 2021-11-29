@@ -189,4 +189,10 @@ module.exports = {
     }, ['inputFile', 'outputFile'],
         null,
         false),
+
+    runBundleAdjustment: makeRunner('/usr/bin/node', options => {
+        return [path.join(__dirname, "..", "scripts", "runBA.js"), options.projectFolderPath];
+    }, ['projectFolderPath'],
+        null,
+        false)
 };

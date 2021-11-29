@@ -413,10 +413,10 @@ app.get("/task/list", authCheck, (req, res) => {
 });
 
 /** @swagger
-*   /task/singular/new
-*     post:
-*       description: Posts a singular process task (potreeconverter, generate-cog, etc.)
-*       tags: [task]
+ *  /task/singular/new:
+ *    post:
+ *      description: Posts a singular process task (potreeconverter, generate-cog, etc.)
+ *      tags: [task]
  *      consumes:
  *        - multipart/form-data
  *      parameters:
@@ -435,13 +435,13 @@ app.get("/task/list", authCheck, (req, res) => {
  *        -
  *          name: options
  *          in: formData
- *          description: 'Serialized JSON string of the options to use for processing, as an array of the format: [{name: option1, value: value1}, {name: option2, value: value2}, ...]'
+ *          description: "Serialized JSON string of the options to use for processing, as an array of the format: [{name: option1, value: value1}, {name: option2, value: value2}, ...]"
  *          required: true
  *          type: string
  *        -
  *          name: webhook
  *          in: formData
- *          description: Optional URL to call when processing has ended (either successfully or unsuccessfully).
+ *          description: "Optional URL to call when processing has ended (either successfully or unsuccessfully)."
  *          required: false
  *          type: string
  *        -
@@ -453,7 +453,9 @@ app.get("/task/list", authCheck, (req, res) => {
  *        -
  *          name: taskType
  *          in: formData
- *          description: 'Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, pdal-translate, ifc-convert, encode-video(ffmpeg)
+ *          description: "Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, pdal-translate, ifc-convert, encode-video(ffmpeg)"
+ *          type: string
+ *          required: true
  *        -
  *          name: token
  *          in: query
@@ -839,6 +841,82 @@ app.post(
         );
     }
 );
+
+/** @swagger
+ * /task/reoptimize:
+ *    post:
+ *      description: Reoptimizes a reconstruction according to provided gcps
+ *      parameters:
+ *        -
+ *          name: uuid
+ *          in: body
+ *          description: UUID of the task
+ *          required: true
+ *          schema:
+ *            type: string
+ *        -
+ *          name: gcpMarks
+ *          in: body
+ *          description: 'Serialized JSON string of gcpMarks, as an array of the format: [{filename, u, v, x, y, z}, {...}] . For example, [{"name":"cmvs-maxImages","value":"500"},{"name":"time","value":true}].'
+ *          required: true
+ *          schema:
+ *            type: string
+ *        -
+ *          name: token
+ *          in: query
+ *          description: 'Token required for authentication (when authentication is required).'
+ *          required: false
+ *          type: string
+ *
+ *      responses:
+ *        200:
+ *          description: Command Received
+ *          schema:
+ *            $ref: "#/definitions/Response"
+ */
+app.post(
+    "/task/reoptimize",
+    urlEncodedBodyParser,
+    jsonBodyParser,
+    authCheck,
+    uuidCheck,
+    (req, res, next) => {
+        if (!req.body.gcpMarks) {
+            return res.json({ error: 'gcpMarks param is missing' });
+        } else {
+            // validate gcpMarks
+            let gcpMarks = req.body.gcpMarks;
+
+            if (typeof(gcpMarks) === 'string') {
+                try {
+                    gcpMarks = JSON.parse(gcpMarks);
+                } catch (err) {
+                    return res.json({ error: 'failed to parse gcpMarks' })
+                }
+            }
+
+            if (!Array.isArray(gcpMarks)) {
+                return res.json({ error: 'gcpMarks should be an array' });
+            }
+
+            for (const mark of gcpMarks) {
+                if (!(mark.filename && (mark.u || mark.u === 0) && (mark.v || mark.v === 0) && mark.x && mark.y && mark.z)) {
+                    return res.json({ error: 'failed to parse gcpMarks' });
+                }
+            }
+
+            req.body.gcpMarks = gcpMarks;
+        }
+        next();
+    },
+    (req, res) => {
+        taskManager.reoptimize(
+            req.body.uuid,
+            req.body.gcpMarks,
+            successHandler(res)
+        );
+    }
+)
 
 /** @swagger
  * /options:

@@ -38,8 +38,10 @@
     "swagger-jsdoc": "^3.2.6",
     "systeminformation": "3.42.0",
     "tree-kill": "^1.2.1",
+    "utm": "^1.1.1",
     "uuid": "^3.3.2",
-    "winston": "^3.3.3"
+    "winston": "^3.3.3",
+    "yaml": "^1.10.2"
   },
   "devDependencies": {
     "grunt": "^1.0.3",

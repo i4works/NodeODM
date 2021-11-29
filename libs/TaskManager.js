@@ -295,6 +295,19 @@ class TaskManager{
         }
     }
 
+    // re-runs bundle adjustment with new gcp marks
+    reoptimize(uuid, gcpMarks, cb){
+        let task = this.find(uuid, cb);
+        if (task){
+            task.reoptimize = true;
+            task.gcpMarks = gcpMarks;
+            task.restart({}, err => {
+                if (!err) this.processNextTask();
+                cb(err);
+            });
+        }
+    }
+
     // Finds a task by its UUID string.
     find(uuid, cb){
         let task = this.tasks[uuid];

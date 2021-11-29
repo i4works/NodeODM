@@ -38,6 +38,7 @@ const { parser } = require("stream-json");
 const { ignore } = require("stream-json/filters/Ignore");
 const { streamArray } = require("stream-json/streamers/StreamArray");
 const readline = require("readline");
+const utm = require("utm");
 const AbstractTask = require("./AbstractTask");
 
 
@@ -228,7 +229,8 @@ module.exports = class Task extends AbstractTask {
             this.progress = globalProgress;
         }
 
-        this.callWebhooks();
+        const endWithOption = this.options.filter(e => e.name === 'end-with');
+        if (!(endWithOption && endWithOption.value === 'opensfm')) this.callWebhooks(); // no need to send progress for initial progressing
     }
 
     updateProcessingTime(resetTime) {
@@ -899,6 +901,63 @@ module.exports = class Task extends AbstractTask {
             this.setStatus(statusCodes.RUNNING);
             this.callWebhooks();
 
+            if (this.reoptimize) {
+                const tasks = [];
+
+                tasks.push(cb => {
+                    const reference_lla = JSON.parse(fs.readFileSync(path.join(this.getProjectFolderPath(), 'opensfm', 'reference_lla.json'), { encoding: 'utf8' }));
+                    const {zoneNum} = utm.fromLatLon(reference_lla.latitude, reference_lla.longitude);
+                    const srsString = `WGS84 UTM ${zoneNum}${reference_lla.latitude > 0 ? 'N' : 'S'}\n`;
+                    const gcpString = srsString + this.gcpMarks.map(({filename, x, y, z, u, v}) => `${x} ${y} ${z} ${u} ${v} ${filename}`).join('\n');
+
+                    fs.writeFile(
+                        path.join(this.getProjectFolderPath(), 'opensfm', 'gcp_list.txt'),
+                        gcpString,
+                        (err) => {
+                            cb(err);
+                        }
+                    );
+                });
+                tasks.push(this.runBundleAdjustment());
+
+                tasks.push(cb => {
+                    const pipeline = fs.createReadStream(path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json')).pipe(parser());
+
+                    // filter out points array to reduce size
+                    const jsonStream = pipeline.pipe(ignore({ filter: /points/ })).pipe(streamArray())
+
+                    const reconstructionArray = [];
+                    jsonStream.on("data", ({ value }) => reconstructionArray.push(value));
+                    jsonStream.on("end", () => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/ai/reconstruction.json`,
+                            reconstructionArray,
+                            (err) => {
+                                if (!err) this.output.push('Uploaded reconstruction.json, continuing');
+
+                                this.stopTrackingProcessingTime();
+                                this.setStatus(statusCodes.COMPLETED);
+                                this.callWebhooks();
+                                cb(null);
+                            }
+                        )
+                    });
+
+                });
+
+                async.series(tasks, (err) => {
+                    if (!err) {
+                        this.setStatus(statusCodes.COMPLETED);
+                        done();
+                    } else {
+                        this.setStatus(statusCodes.FAILED);
+                        done(err);
+                    }
+                });
+
+                return true;
+            }
+
             let runnerOptions = this.options.reduce((result, opt) => {
                 result[opt.name] = opt.value;
                 return result;
@@ -996,6 +1055,36 @@ module.exports = class Task extends AbstractTask {
         }
     }
 
+    runBundleAdjustment() {
+        const opts = { projectFolderPath: this.getProjectFolderPath() };
+
+        return (done) => {
+            this.runningProcesses.push(
+                processRunner.runBundleAdjustment(opts,
+                    (err, code, _) => {
+                        if (err) {
+                            console.log(err);
+                            done(err);
+                        } else {
+                            if (code === 0) {
+                                this.updateProgress(25);
+                                done();
+                            } else
+                                done(
+                                    new Error(
+                                        `Process exited with code ${code}`
+                                    )
+                                );
+                        }
+                    },
+                    (output) => {
+                        this.output.push(output);
+                    }
+                )
+            )
+        };
+    }
+
     runPostProcess(type) {
         let opts;
         let runner;
@@ -1077,6 +1166,7 @@ module.exports = class Task extends AbstractTask {
 
     // Re-executes the task (by setting it's state back to QUEUED)
     // Only tasks that have been canceled, completed or have failed can be restarted.
+    // if reoptimize is true, only bundle adjustment will be run
     restart(options, cb) {
         if (
             [
@@ -1086,12 +1176,14 @@ module.exports = class Task extends AbstractTask {
             ].indexOf(this.status.code) !== -1
         ) {
             this.setStatus(statusCodes.QUEUED);
-            this.dateCreated = new Date().getTime();
-            this.dateStarted = 0;
-            this.output = [];
-            this.progress = 0;
-            this.stopTrackingProcessingTime(true);
-            if (options !== undefined) this.options = options;
+            if (!this.reoptimize) {
+                this.dateCreated = new Date().getTime();
+                this.dateStarted = 0;
+                this.output = [];
+                this.progress = 0;
+                this.stopTrackingProcessingTime(true);
+                if (options !== undefined) this.options = options;
+            }
             cb(null);
         } else {
             cb(new Error("Task cannot be restarted"));
