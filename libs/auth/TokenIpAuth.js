@@ -30,13 +30,13 @@ module.exports = class TokenIpAuth extends TokenAuthBase {
         if (this.token === token) {
             return cb(null, true);
         } else {
-            cb(new Error("token does not match."), false);
+            cb(new Error(`${token} does not match with authorized token.`), false);
         }
     }
 
     validateIp(ip, cb) {
         if (this.authorizedIps.indexOf(ip) !== -1) return cb(null, true)
-        else cb(new Error('IP is not one of authorized IPs.', false))
+        else cb(new Error(`${ip} is not one of authorized IPs.`, false))
     }
 
     getMiddleware() {
