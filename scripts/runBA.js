@@ -15,6 +15,8 @@ function execute() {
         osfmConfig['bundle_use_gcp'] = true;
     }
 
+    osfmConfig['bundle_use_gps'] = false;
+
     fs.writeFileSync(configPath, YAML.stringify(osfmConfig));
 
     const childProcess = spawn('/code/SuperBuild/install/bin/opensfm/bin/opensfm', ['bundle', opensfmFolderPath]);
