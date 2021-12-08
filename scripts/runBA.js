@@ -11,11 +11,8 @@ function execute() {
     const configString = fs.readFileSync(configPath, {encoding: 'utf8'});
     const osfmConfig = YAML.parse(configString);
 
-    if (!osfmConfig['bundle_use_gcp']) {
-        osfmConfig['bundle_use_gcp'] = true;
-    }
-
-    osfmConfig['bundle_use_gps'] = false;
+    osfmConfig['bundle_use_gps'] = true;
+    osfmConfig['bundle_use_gcp'] = true;
 
     fs.writeFileSync(configPath, YAML.stringify(osfmConfig));
 
