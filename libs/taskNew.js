@@ -227,10 +227,7 @@ module.exports = {
                         else {
                             try {
                                 const body = JSON.parse(data);
-                                fs.unlink(bodyFile, (err) => {
-                                    if (err) cb(err);
-                                    else cb(null, body);
-                                });
+                                cb(null, body);
                             } catch (e) {
                                 cb(new Error("Malformed body.json"));
                             }
