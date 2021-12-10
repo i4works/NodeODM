@@ -937,7 +937,7 @@ module.exports = class Task extends AbstractTask {
 
                                 this.stopTrackingProcessingTime();
                                 this.setStatus(statusCodes.COMPLETED);
-                                this.callWebhooks();
+                                this.callWebhooks("reoptimize");
                                 cb(null);
                             }
                         )
