@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 "use strict";
 
 const fs = require("fs");
+const path = require("path")
 const config = require("./config.js");
 const packageJson = JSON.parse(fs.readFileSync("./package.json"));
 
@@ -45,7 +46,7 @@ app.use("/swagger.json", express.static("docs/swagger.json"));
 
 const formDataParser = multer().none();
 const urlEncodedBodyParser = bodyParser.urlencoded({ extended: false });
-const jsonBodyParser = bodyParser.json();
+const jsonBodyParser = bodyParser.json({ type: 'application/json' });
 
 let taskManager;
 let server;
@@ -367,11 +368,12 @@ app.post(
 );
 
 let getTaskFromUuid = (req, res, next) => {
+    const uuid = req.params.uuid ? req.params.uuid : req.body.uuid || '';
     let task = taskManager.find(req.params.uuid);
     if (task) {
         req.task = task;
         next();
-    } else res.json({ error: `${req.params.uuid} not found` });
+    } else res.json({ error: `${uuid} not found` });
 };
 
 /** @swagger
@@ -786,17 +788,16 @@ app.post(
 );
 
 /** @swagger
- * /task/restart:
+ * /task/restart/{uuid}:
  *    post:
  *      description: Restarts a task that was previously canceled, that had failed to process or that successfully completed
  *      parameters:
  *        -
- *          name: uuid
- *          in: body
- *          description: UUID of the task
- *          required: true
- *          schema:
- *            type: string
+*           name: uuid
+*           in: path
+*           description: UUID of the task
+*           required: true
+*           type: string
  *        -
  *          name: options
  *          in: body
@@ -804,6 +805,19 @@ app.post(
  *          required: false
  *          schema:
  *            type: string
+ *        -
+ *          name: gcpFile
+ *          in: body
+ *          descriptin: 'gcp_list.txt file as string'
+ *          required: false,
+ *          schema:
+ *            type: string
+ *        -
+ *          name: webhook
+ *          in: body
+ *          description: Optional URL to call when processing has ended (either successfully or unsuccessfully).
+ *          required: false
+ *          type: string
  *        -
  *          name: token
  *          in: query
@@ -817,12 +831,21 @@ app.post(
  *            $ref: "#/definitions/Response"
  */
 app.post(
-    "/task/restart",
+    "/task/restart/:uuid",
     urlEncodedBodyParser,
     jsonBodyParser,
     authCheck,
-    uuidCheck,
+    getTaskFromUuid,
     (req, res, next) => {
+        if (req.body.gcpFile && req.task) {
+            fs.writeFileSync(path.join(req.task.getGcpFolderPath(), 'gcp_list.txt' ), req.body.gcpFile, { encoding: 'utf8' });
+            req.task.gcpFiles.push('gcp_list.txt');
+        }
+
+        if (req.body.webhook && req.task) {
+            req.task.webhook = req.body.webhook;
+        }
+
         if (req.body.options) {
             odmInfo.filterOptions(req.body.options, (err, options) => {
                 if (err) res.json({ error: err.message });
@@ -835,7 +858,7 @@ app.post(
     },
     (req, res) => {
         taskManager.restart(
-            req.body.uuid,
+            req.params.uuid,
             req.body.options,
             successHandler(res)
         );

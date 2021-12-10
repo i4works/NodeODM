@@ -502,6 +502,7 @@ module.exports = class Task extends AbstractTask {
 
             // Did the user request different outputs than the default?
             if (this.outputs.length > 0) allPaths = this.outputs;
+            else allPaths = ["odm_orthophoto/odm_orthophoto.tif", "odm_georeferencing"];
 
             let tasks = [];
 
@@ -640,7 +641,6 @@ module.exports = class Task extends AbstractTask {
                     });
                 } else {
                     // sg s3 uplaod
-
                     if (allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
                         tasks.push((done) => {
                             S3.uploadSingle(
@@ -702,9 +702,9 @@ module.exports = class Task extends AbstractTask {
                                 ),
                                 (err) => {
                                     if (!err)
-                                        this.output.push(
-                                            "Uploaded dsm, continuing"
-                                        );
+                                    this.output.push(
+                                        "Uploaded dsm, continuing"
+                                    );
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -728,9 +728,9 @@ module.exports = class Task extends AbstractTask {
                                 ),
                                 (err) => {
                                     if (!err)
-                                        this.output.push(
-                                            "Uploaded dtm, continuing"
-                                        );
+                                    this.output.push(
+                                        "Uploaded dtm, continuing"
+                                    );
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -747,10 +747,10 @@ module.exports = class Task extends AbstractTask {
                         const meshCanditatePaths = fs.readdirSync(path.join(this.getProjectFolderPath(), 'odm_texturing'));
                         const meshPaths = meshCanditatePaths.filter(p => {
                             if (!p.includes('geo'))
-                                return false;
+                            return false;
 
                             if (p.substr(-4) === 'conf')
-                                return false;
+                            return false;
 
                             return true;
                         }).map(e => path.join(this.getProjectFolderPath(), 'odm_texturing', e));
@@ -825,62 +825,62 @@ module.exports = class Task extends AbstractTask {
                             this.callWebhooks('nexus');
                             done(null);
                         });
-
-                        tasks.push((done) => {
-                            S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/ai/tracks.csv`,
-                                path.join(this.getProjectFolderPath(), 'opensfm', 'tracks.csv'),
-                                (err) => {
-                                    if (!err) this.output.push('Uploaded tracks.csv, continuing');
-                                    done(err);
-                                }
-                            )
-                        });
-
-                        tasks.push((done) => {
-                            S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/ai/reconstruction.json`,
-                                path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json'),
-                                (err) => {
-                                    if (!err) this.output.push('Uploaded reconstruction.json, continuing');
-                                    done(err);
-                                }
-                            )
-                        });
-
-                        tasks.push((done) => {
-                            S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/report/report.pdf`,
-                                path.join(this.getProjectFolderPath(), 'odm_report', 'report.pdf'),
-                                (err) => {
-                                    if (!err) this.output.push('Uploaded report.pdf, continuing');
-                                    done(err);
-                                }
-                            )
-                        });
-
-                        tasks.push((done) => {
-                            S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/report/stats.json`,
-                                path.join(this.getProjectFolderPath(), 'odm_report', 'stats.json'),
-                                (err) => {
-                                    if (!err) this.output.push('Uploaded stats.json, finishing');
-                                    done(err);
-                                }
-                            )
-                        });
-
-                        tasks.push((done) => {
-                            S3.uploadSingle(
-                                `project/${this.projectId}/process/${this.uuid}/report/shots.geojson`,
-                                path.join(this.getProjectFolderPath(), 'odm_report', 'shots.geojson'),
-                                (err) => {
-                                    if (!err) this.output.push('Uploaded shots.geojson, finishing');
-                                    done(err);
-                                }
-                            )
-                        });
                     }
+
+                    tasks.push((done) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/ai/tracks.csv`,
+                            path.join(this.getProjectFolderPath(), 'opensfm', 'tracks.csv'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded tracks.csv, continuing');
+                                done(err);
+                            }
+                        )
+                    });
+
+                    tasks.push((done) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/ai/reconstruction.json`,
+                            path.join(this.getProjectFolderPath(), 'opensfm', 'reconstruction.json'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded reconstruction.json, continuing');
+                                done(err);
+                            }
+                        )
+                    });
+
+                    tasks.push((done) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/report/report.pdf`,
+                            path.join(this.getProjectFolderPath(), 'odm_report', 'report.pdf'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded report.pdf, continuing');
+                                done(err);
+                            }
+                        )
+                    });
+
+                    tasks.push((done) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/report/stats.json`,
+                            path.join(this.getProjectFolderPath(), 'odm_report', 'stats.json'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded stats.json, finishing');
+                                done(err);
+                            }
+                        )
+                    });
+
+                    tasks.push((done) => {
+                        S3.uploadSingle(
+                            `project/${this.projectId}/process/${this.uuid}/report/shots.geojson`,
+                            path.join(this.getProjectFolderPath(), 'odm_report', 'shots.geojson'),
+                            (err) => {
+                                if (!err) this.output.push('Uploaded shots.geojson, finishing');
+                                done(err);
+                            }
+                        )
+                    });
                 }
             }
 
@@ -946,6 +946,7 @@ module.exports = class Task extends AbstractTask {
                 });
 
                 async.series(tasks, (err) => {
+                    this.reoptimize = false;
                     if (!err) {
                         this.setStatus(statusCodes.COMPLETED);
                         done();
@@ -972,7 +973,7 @@ module.exports = class Task extends AbstractTask {
             if (this.outputs.length && this.outputs.includes("odm_dem/dsm.tif"))
                 runnerOptions["dsm"] = true;
 
-            const downloadTasks = this.imageLinks.length ? this.imageLinks.map(dlLink => cb => {
+            const downloadTasks = this.imageLinks.length && !this.imagesDownloaded ? this.imageLinks.map(dlLink => cb => {
                 const imageName = dlLink.split('/').pop();
                 const p = path.join(this.getImagesFolderPath(), imageName);
                 this.output.push(`downloading ${p} ...`);
@@ -989,6 +990,7 @@ module.exports = class Task extends AbstractTask {
                     });
                     finished(err);
                 } else {
+                    this.imagesDownloaded = true;
                     // TODO update this.images
                     if (this.gcpFiles.length > 0) {
                         runnerOptions.gcp = fs.realpathSync(
@@ -1202,6 +1204,7 @@ module.exports = class Task extends AbstractTask {
             options: this.options,
             imagesCount: this.images.length,
             progress: this.progress,
+            outputs: this.outputs
         };
     }
 
