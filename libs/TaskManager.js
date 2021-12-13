@@ -91,6 +91,11 @@ class TaskManager{
         for (let uuid in this.tasks){
             let task = this.tasks[uuid];
 
+            const endWithOption = task.options.filter(o => o.name === "end-with").pop();
+            if (endWithOption && endWithOption.value === "opensfm") {
+                continue;
+            }
+
             let dateFinished = task.dateCreated;
             if (task.processingTime > 0) dateFinished += task.processingTime;
 
@@ -284,6 +289,19 @@ class TaskManager{
         let task = this.find(uuid, cb);
         if (task){
             task.restart(options, err => {
+                if (!err) this.processNextTask();
+                cb(err);
+            });
+        }
+    }
+
+    // re-runs bundle adjustment with new gcp marks
+    reoptimize(uuid, gcpMarks, cb){
+        let task = this.find(uuid, cb);
+        if (task){
+            task.reoptimize = true;
+            task.gcpMarks = gcpMarks;
+            task.restart({}, err => {
                 if (!err) this.processNextTask();
                 cb(err);
             });

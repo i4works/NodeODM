@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 "use strict";
 
 const fs = require("fs");
+const path = require("path")
 const config = require("./config.js");
 const packageJson = JSON.parse(fs.readFileSync("./package.json"));
 
@@ -47,7 +48,7 @@ app.use("/swagger.json", express.static("docs/swagger.json"));
 
 const formDataParser = multer().none();
 const urlEncodedBodyParser = bodyParser.urlencoded({ extended: false });
-const jsonBodyParser = bodyParser.json();
+const jsonBodyParser = bodyParser.json({ type: 'application/json' });
 
 let taskManager;
 let server;
@@ -369,11 +370,12 @@ app.post(
 );
 
 let getTaskFromUuid = (req, res, next) => {
+    const uuid = req.params.uuid ? req.params.uuid : req.body.uuid || '';
     let task = taskManager.find(req.params.uuid);
     if (task) {
         req.task = task;
         next();
-    } else res.json({ error: `${req.params.uuid} not found` });
+    } else res.json({ error: `${uuid} not found` });
 };
 
 /** @swagger
@@ -415,10 +417,10 @@ app.get("/task/list", authCheck, (req, res) => {
 });
 
 /** @swagger
-*   /task/singular/new
-*     post:
-*       description: Posts a singular process task (potreeconverter, generate-cog, etc.)
-*       tags: [task]
+ *  /task/singular/new:
+ *    post:
+ *      description: Posts a singular process task (potreeconverter, generate-cog, etc.)
+ *      tags: [task]
  *      consumes:
  *        - multipart/form-data
  *      parameters:
@@ -437,13 +439,13 @@ app.get("/task/list", authCheck, (req, res) => {
  *        -
  *          name: options
  *          in: formData
- *          description: 'Serialized JSON string of the options to use for processing, as an array of the format: [{name: option1, value: value1}, {name: option2, value: value2}, ...]'
+ *          description: "Serialized JSON string of the options to use for processing, as an array of the format: [{name: option1, value: value1}, {name: option2, value: value2}, ...]"
  *          required: true
  *          type: string
  *        -
  *          name: webhook
  *          in: formData
- *          description: Optional URL to call when processing has ended (either successfully or unsuccessfully).
+ *          description: "Optional URL to call when processing has ended (either successfully or unsuccessfully)."
  *          required: false
  *          type: string
  *        -
@@ -455,7 +457,9 @@ app.get("/task/list", authCheck, (req, res) => {
  *        -
  *          name: taskType
  *          in: formData
- *          description: 'Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, pdal-translate, ifc-convert, encode-video(ffmpeg)
+ *          description: "Singular task type to execute. Should be one of the following : pointcloud, mesh, orthophoto, sg-compare, pdal-translate, ifc-convert, encode-video(ffmpeg)"
+ *          type: string
+ *          required: true
  *        -
  *          name: token
  *          in: query
@@ -786,17 +790,16 @@ app.post(
 );
 
 /** @swagger
- * /task/restart:
+ * /task/restart/{uuid}:
  *    post:
  *      description: Restarts a task that was previously canceled, that had failed to process or that successfully completed
  *      parameters:
  *        -
- *          name: uuid
- *          in: body
- *          description: UUID of the task
- *          required: true
- *          schema:
- *            type: string
+*           name: uuid
+*           in: path
+*           description: UUID of the task
+*           required: true
+*           type: string
  *        -
  *          name: options
  *          in: body
@@ -804,6 +807,19 @@ app.post(
  *          required: false
  *          schema:
  *            type: string
+ *        -
+ *          name: gcpFile
+ *          in: body
+ *          descriptin: 'gcp_list.txt file as string'
+ *          required: false,
+ *          schema:
+ *            type: string
+ *        -
+ *          name: webhook
+ *          in: body
+ *          description: Optional URL to call when processing has ended (either successfully or unsuccessfully).
+ *          required: false
+ *          type: string
  *        -
  *          name: token
  *          in: query
@@ -817,12 +833,21 @@ app.post(
  *            $ref: "#/definitions/Response"
  */
 app.post(
-    "/task/restart",
+    "/task/restart/:uuid",
     urlEncodedBodyParser,
     jsonBodyParser,
     authCheck,
-    uuidCheck,
+    getTaskFromUuid,
     (req, res, next) => {
+        if (req.body.gcpFile && req.task) {
+            fs.writeFileSync(path.join(req.task.getGcpFolderPath(), 'gcp_list.txt' ), req.body.gcpFile, { encoding: 'utf8' });
+            req.task.gcpFiles.push('gcp_list.txt');
+        }
+
+        if (req.body.webhook && req.task) {
+            req.task.webhook = req.body.webhook;
+        }
+
         if (req.body.options) {
             odmInfo.filterOptions(req.body.options, (err, options) => {
                 if (err) res.json({ error: err.message });
@@ -835,12 +860,88 @@ app.post(
     },
     (req, res) => {
         taskManager.restart(
-            req.body.uuid,
+            req.params.uuid,
             req.body.options,
             successHandler(res)
         );
     }
 );
+
+/** @swagger
+ * /task/reoptimize:
+ *    post:
+ *      description: Reoptimizes a reconstruction according to provided gcps
+ *      parameters:
+ *        -
+ *          name: uuid
+ *          in: body
+ *          description: UUID of the task
+ *          required: true
+ *          schema:
+ *            type: string
+ *        -
+ *          name: gcpMarks
+ *          in: body
+ *          description: 'Serialized JSON string of gcpMarks, as an array of the format: [{filename, u, v, x, y, z}, {...}] . For example, [{"name":"cmvs-maxImages","value":"500"},{"name":"time","value":true}].'
+ *          required: true
+ *          schema:
+ *            type: string
+ *        -
+ *          name: token
+ *          in: query
+ *          description: 'Token required for authentication (when authentication is required).'
+ *          required: false
+ *          type: string
+ *
+ *      responses:
+ *        200:
+ *          description: Command Received
+ *          schema:
+ *            $ref: "#/definitions/Response"
+ */
+app.post(
+    "/task/reoptimize",
+    urlEncodedBodyParser,
+    jsonBodyParser,
+    authCheck,
+    uuidCheck,
+    (req, res, next) => {
+        if (!req.body.gcpMarks) {
+            return res.json({ error: 'gcpMarks param is missing' });
+        } else {
+            // validate gcpMarks
+            let gcpMarks = req.body.gcpMarks;
+
+            if (typeof(gcpMarks) === 'string') {
+                try {
+                    gcpMarks = JSON.parse(gcpMarks);
+                } catch (err) {
+                    return res.json({ error: 'failed to parse gcpMarks' })
+                }
+            }
+
+            if (!Array.isArray(gcpMarks)) {
+                return res.json({ error: 'gcpMarks should be an array' });
+            }
+
+            for (const mark of gcpMarks) {
+                if (!(mark.filename && (mark.u || mark.u === 0) && (mark.v || mark.v === 0) && mark.x && mark.y && mark.z)) {
+                    return res.json({ error: 'failed to parse gcpMarks' });
+                }
+            }
+
+            req.body.gcpMarks = gcpMarks;
+        }
+        next();
+    },
+    (req, res) => {
+        taskManager.reoptimize(
+            req.body.uuid,
+            req.body.gcpMarks,
+            successHandler(res)
+        );
+    }
+)
 
 /** @swagger
  * /options:

@@ -264,14 +264,14 @@ module.exports = {
                     {
                         Bucket: config.s3Bucket,
                         Key: key,
-                        Body: fs.createReadStream(path),
+                        Body: typeof path === "string" ? fs.createReadStream(path) : JSON.stringify(path),
                         ACL: config.s3ACL,
                     },
                     { partSize, queueSize: concurrency },
                     (err) => {
                         if (err) {
                             logger.debug(err);
-                            const msg = `Cannot upload file to S3: ${err.code}, retrying... ${retries}`;
+                            const msg = `Cannot upload file ${key} to S3: ${err.code}, retrying... ${retries}`;
                             if (onOutput) onOutput(msg);
                             if (retries < MAX_RETRIES) {
                                 retries++;
@@ -283,7 +283,7 @@ module.exports = {
 
                                 setTimeout(() => {
                                     upload();
-                                }, 2 ** file.retries * 1000);
+                                }, 2 ** retries * 1000);
                             } else {
                                 cb(new Error(msg));
                             }
@@ -331,7 +331,7 @@ module.exports = {
                     else {  
                         retries++;
                         dl();
-                        stream.end();
+                        writeStream.end();
                     }
                 })
                 .on('finish', () => cb());

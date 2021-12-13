@@ -1,9 +1,8 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-const childProcess = spawn('pdal', ['info', '--summary', process.argv[2]]);
-
 function execute() {
+    const childProcess = spawn('pdal', ['info', '--summary', process.argv[2]]);
     let stdout = '';
     let stderr = '';
 

@@ -35,11 +35,14 @@
     "node-unzip-2": "^0.2.7",
     "request": "^2.88.0",
     "rimraf": "^2.6.2",
+    "stream-json": "^1.7.3",
     "swagger-jsdoc": "^3.2.6",
     "systeminformation": "3.42.0",
     "tree-kill": "^1.2.1",
+    "utm": "^1.1.1",
     "uuid": "^3.3.2",
-    "winston": "^3.3.3"
+    "winston": "^3.3.3",
+    "yaml": "^1.10.2"
   },
   "devDependencies": {
     "grunt": "^1.0.3",
