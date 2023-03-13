@@ -133,7 +133,8 @@ module.exports = {
             "-co", "COMPRESS=DEFLATE", 
             "-co", "BIGTIFF=IF_SAFER", 
             "-co", "RESAMPLING=NEAREST", 
-            "-co", "TILING_SCHEME=GoogleMapsCompatible"
+            "-co", "TILING_SCHEME=GoogleMapsCompatible",
+            "-co", "ZOOM_LEVEL=24"
         ];
 
         return params;
