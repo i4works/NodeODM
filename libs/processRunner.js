@@ -133,8 +133,7 @@ module.exports = {
             "-co", "COMPRESS=DEFLATE", 
             "-co", "BIGTIFF=IF_SAFER", 
             "-co", "RESAMPLING=NEAREST", 
-            "-co", "TILING_SCHEME=GoogleMapsCompatible",
-            "-co", "ZOOM_LEVEL=24"
+            "-co", "TILING_SCHEME=GoogleMapsCompatible"
         ];
 
         return params;
@@ -172,6 +171,12 @@ module.exports = {
     }, ['inputFile'],
         null,
         false),
+
+    runClassify: makeRunner('pdal', (options) => {
+        return ['translate', '-i', options.inputFile, '-o', options.inputFile, 'smrf', 'range', '--filters.range.limits=Classification[2:2]'];
+    }, ['inputFile'],
+        null,
+        false),    
 
     runFindSrs: makeRunner('/usr/bin/node', options => {
         return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];

@@ -183,7 +183,7 @@ module.exports = class SingularTask extends AbstractTask {
 
             switch (this.taskType) {
                 case 'pointcloud': {
-                    const {inputResourceId, outputResourceId, fileName}  = parsedOptions;
+                    const {inputResourceId, outputResourceId, fileName, classify}  = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}/task_output.txt`;
 
@@ -200,6 +200,7 @@ module.exports = class SingularTask extends AbstractTask {
                     });
 
                     tasks.push(this.runProcess("pointcloud_pre", { fileName }));
+                    if (classify === "ground") tasks.push(this.runProcess("pointcloud_classify", { fileName }));
                     tasks.push(this.runProcess("pointcloud", { fileName }));
                     tasks.push(this.runProcess("pointcloud_post", { fileName }));
 
@@ -440,6 +441,12 @@ module.exports = class SingularTask extends AbstractTask {
                     inputFile: path.join(this.getProjectFolderPath(), options.fileName)
                 };
                 runner = processRunner.runFixBB;
+                break;
+            case "pointcloud_classify":
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), options.fileName)
+                };
+                runner = processRunner.runClassify;
                 break;
             case "pointcloud":
                 opts = {

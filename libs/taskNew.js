@@ -105,7 +105,7 @@ const checkSingularProcessOptions = (options, taskType, cb) => {
         if (!Array.isArray(options)) options = [];
 
         const requiredOptions = {
-            "pointcloud": ["inputResourceId", "outputResourceId", "fileName"],
+            "pointcloud": ["inputResourceId", "outputResourceId", "fileName", "classify"],
             "orthophoto": ["inputResourceId"],
             "mesh": ["inputResourceId", "outputResourceId"],
             "sg-compare": ["outputResourcePointcloudId", "outputResourcePotreePointcloudId", "prevResourceFilepath", "nextResourceFilepath"],
