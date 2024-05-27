@@ -66,12 +66,7 @@ module.exports = {
                         logger.info("Connected to S3");
                         cb();
                     } else {
-                        cb(
-                            new Error(
-                                "Cannot connect to S3. Check your S3 configuration: " +
-                                err.code
-                            )
-                        );
+                        cb(new Error(`Cannot connect to S3. Check your S3 configuration: ${err.message} (${err.code})`));
                     }
                 }
             );
@@ -131,7 +126,7 @@ module.exports = {
                     (err) => {
                         if (err) {
                             logger.debug(err);
-                            const msg = `Cannot upload file to S3: ${err.code}, retrying... ${file.retries}`;
+                            const msg = `Cannot upload file to S3: ${err.message} (${err.code}), retrying... ${file.retries}`;
                             if (onOutput) onOutput(msg);
                             if (file.retries < MAX_RETRIES) {
                                 file.retries++;
