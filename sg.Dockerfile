@@ -78,4 +78,6 @@ COPY --from=SGDependencyBuilder /Workspace/OpenSfM/opensfm/report.py /code/Super
 
 RUN npm install && mkdir tmp
 
+RUN pip3 install rio-cogeo
+
 ENTRYPOINT ["/usr/bin/node", "/var/www/index.js"]
