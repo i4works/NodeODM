@@ -25,9 +25,9 @@ let logger = require('./logger');
 let utils = require('./utils');
 
 
-function makeRunner(command, args, requiredOptions = [], outputTestFile = null, skipOnTest = true){
-    return function(options, done, outputReceived){
-        for (let requiredOption of requiredOptions){
+function makeRunner(command, args, requiredOptions = [], outputTestFile = null, skipOnTest = true) {
+    return function(options, done, outputReceived) {
+        for (let requiredOption of requiredOptions) {
             assert(options[requiredOption] !== undefined, `${requiredOption} must be defined`);
         }
 
@@ -37,24 +37,24 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
         logger.info(`About to run: ${command} ${commandArgs.join(" ")}`);
         if (outputReceived !== undefined) outputReceived(`About to run: ${command} ${commandArgs.join(" ")}`);
 
-        if (config.test && skipOnTest){
+        if (config.test && skipOnTest) {
             logger.info("Test mode is on, command will not execute");
 
-            if (outputTestFile){
+            if (outputTestFile) {
                 fs.readFile(path.resolve(__dirname, outputTestFile), 'utf8', (err, text) => {
-                    if (!err){
-                        if (outputReceived !== undefined){
+                    if (!err) {
+                        if (outputReceived !== undefined) {
                             let lines = text.split("\n");
                             lines.forEach(line => outputReceived(line));
                         }
-                        
+
                         done(null, 0, null);
-                    }else{
+                    } else {
                         logger.warn(`Error: ${err.message}`);
                         done(err);
                     }
                 });
-            }else{
+            } else {
                 done(null, 0, null);
             }
 
@@ -64,7 +64,7 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
         // Launch
         const env = utils.clone(process.env);
         env.LD_LIBRARY_PATH = path.join(config.odm_path, "SuperBuild", "install", "lib");
-        
+
         let cwd = undefined;
         if (options.cwd) cwd = options.cwd;
 
@@ -74,12 +74,12 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
             .on('exit', (code, signal) => done(null, code, signal))
             .on('error', done);
 
-        if (outputReceived !== undefined){
+        if (outputReceived !== undefined) {
             childProcess.stdout.on('data', chunk => outputReceived(chunk.toString()));
             childProcess.stderr.on('data', chunk => outputReceived(chunk.toString()));
-        }else{
-            childProcess.stdout.on('data', () => {});
-            childProcess.stderr.on('data', () => {});
+        } else {
+            childProcess.stdout.on('data', () => { });
+            childProcess.stderr.on('data', () => { });
         }
 
         return childProcess;
@@ -88,66 +88,64 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
 
 module.exports = {
     runPostProcessingScript: makeRunner(path.join(__dirname, "..", "scripts", "postprocess.sh"),
-                     function(options){
-                         return [options.projectFolderPath];
-                     },
-                     ["projectFolderPath"]),
-
-    sevenZip: makeRunner("7z", function(options){
-            return ["a", "-mx=0", "-y", "-r", "-bd", options.destination].concat(options.pathsToArchive);
+        function(options) {
+            return [options.projectFolderPath];
         },
+        ["projectFolderPath"]),
+
+    sevenZip: makeRunner("7z", function(options) {
+        return ["a", "-mx=0", "-y", "-r", "-bd", options.destination].concat(options.pathsToArchive);
+    },
         ["destination", "pathsToArchive", "cwd"],
         null,
         false),
 
-    sevenUnzip: makeRunner("7z", function(options){
-            let cmd = "x"; // eXtract files with full paths
-            if (options.noDirectories) cmd = "e"; //Extract files from archive (without using directory names)
+    sevenUnzip: makeRunner("7z", function(options) {
+        let cmd = "x"; // eXtract files with full paths
+        if (options.noDirectories) cmd = "e"; //Extract files from archive (without using directory names)
 
-            return [cmd, "-aoa", "-bd", "-y", `-o${options.destination}`, options.file];
-        },
+        return [cmd, "-aoa", "-bd", "-y", `-o${options.destination}`, options.file];
+    },
         ["destination", "file"],
         null,
         false),
 
-    unzip: makeRunner("unzip", function(options){
-            const opts = options.noDirectories ? ["-j"] : [];
-            return opts.concat(["-qq", "-o", options.file, "-d", options.destination]);
-        },
+    unzip: makeRunner("unzip", function(options) {
+        const opts = options.noDirectories ? ["-j"] : [];
+        return opts.concat(["-qq", "-o", options.file, "-d", options.destination]);
+    },
         ["destination", "file"],
         null,
         false),
 
-    runPotreeConverter: makeRunner("PotreeConverter", function (options) {
+    runPotreeConverter: makeRunner("PotreeConverter", function(options) {
         return [options.input, "-o", options.outDir];
     }, ["input", "outDir"],
         null,
         false),
 
-    runGenerateCog: makeRunner("gdal_translate", function (options) {
+    runGenerateCog: makeRunner("rio", function(options) {
         const params = [
-            options.inputPath, 
-            options.outputPath, 
-            "-of", "COG", 
-            "-co", "BLOCKSIZE=256", 
-            "-co", "COMPRESS=DEFLATE", 
-            "-co", "BIGTIFF=IF_SAFER", 
-            "-co", "RESAMPLING=NEAREST", 
-            "-co", "TILING_SCHEME=GoogleMapsCompatible"
+            "cogeo",
+            "create",
+            "--blocksize", "256",
+            "--web-optimized",
+            options.inputPath,
+            options.outputPath,
         ];
 
         return params;
     }, ["inputPath", "outputPath"],
-       null, 
-       false),
+        null,
+        false),
 
-    runIfcConverter: makeRunner("IfcConvert", function (options) {
+    runIfcConverter: makeRunner("IfcConvert", function(options) {
         return [options.inputFile, options.outputFile];
-    }, ["inputFile", "outputFile"], 
-       null, 
-       false),
+    }, ["inputFile", "outputFile"],
+        null,
+        false),
 
-    runNxsBuild: makeRunner("nxsbuild", function (options) {
+    runNxsBuild: makeRunner("nxsbuild", function(options) {
         return [
             options.inputOBJFile,
             "-m",
@@ -156,17 +154,17 @@ module.exports = {
             options.outputFile,
             "-c",
         ];
-    }, ["inputOBJFile", "inputMTLFile", "outputFile"], 
-       null, 
-       false),
+    }, ["inputOBJFile", "inputMTLFile", "outputFile"],
+        null,
+        false),
 
-    runNxsCompress: makeRunner("nxscompress", function (options) {
+    runNxsCompress: makeRunner("nxscompress", function(options) {
         return [options.inputFile, "-o", options.outputFile];
-    }, ["inputFile", "outputFile"], 
-       null, 
-       false),
+    }, ["inputFile", "outputFile"],
+        null,
+        false),
 
-    runFixBB: makeRunner("lasinfo", function (options) {
+    runFixBB: makeRunner("lasinfo", function(options) {
         return ['-i', options.inputFile, '-repair_bb'];
     }, ['inputFile'],
         null,
@@ -176,7 +174,7 @@ module.exports = {
         return ['translate', '-i', options.inputFile, '-o', options.inputFile, 'smrf', 'range', '--filters.range.limits=Classification[2:2]'];
     }, ['inputFile'],
         null,
-        false),    
+        false),
 
     runFindSrs: makeRunner('/usr/bin/node', options => {
         return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];
