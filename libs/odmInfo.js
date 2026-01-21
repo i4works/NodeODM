@@ -1,9 +1,9 @@
 /* 
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap. 
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM. 
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -12,7 +12,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 "use strict";
@@ -58,6 +58,15 @@ module.exports = {
         });
     },
 
+    supportsOption: function(optName, cb){
+        this.getOptions((err, json) => {
+            if (err) cb(err);
+            else{
+                cb(null, !!json.find(opt => opt.name === optName));
+            }
+        });
+    },
+
     getOptions: function(done){
         if (odmOptions){
             done(null, odmOptions);
@@ -73,8 +82,8 @@ module.exports = {
                     // (num cores can be set programmatically, so can gcpFile, etc.)
                     if (["-h", "--project-path", "--cmvs-maxImages", "--time",
                         "--zip-results", "--pmvs-num-cores",
-                        "--start-with", "--gcp", "--images", "--geo",
-                        "--split-image-groups",
+                        "--start-with", "--gcp", "--images", "--geo", "--align",
+                        "--split-image-groups", "--copy-to",
                         "--rerun-all", "--rerun",
                         "--slam-config", "--video", "--version", "name"].indexOf(option) !== -1) continue;
 

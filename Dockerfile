@@ -1,25 +1,23 @@
-FROM opendronemap/odm:2.6.4
+FROM opendronemap/odm:latest
 MAINTAINER Piero Toffanin <pt@masseranolabs.com>
 
 EXPOSE 3000
 
 USER root
 
-RUN printf "deb http://old-releases.ubuntu.com/ubuntu/ hirsute main restricted\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute-updates main restricted\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute universe\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute-updates universe\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute multiverse\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute-updates multiverse\ndeb http://old-releases.ubuntu.com/ubuntu/ hirsute-backports main restricted universe multiverse" > /etc/apt/sources.list
-
-RUN apt-get update && apt-get install -y curl gpg-agent
-RUN curl --silent --location https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get install -y nodejs unzip p7zip-full && npm install -g nodemon && \
-    ln -s /code/SuperBuild/install/bin/untwine /usr/bin/untwine && \
-    ln -s /code/SuperBuild/install/bin/entwine /usr/bin/entwine && \
-    ln -s /code/SuperBuild/install/bin/pdal /usr/bin/pdal
-
-
 RUN mkdir /var/www
 
 WORKDIR "/var/www"
 COPY . /var/www
 
-RUN npm install --production && mkdir tmp
+ENV NVM_DIR /usr/local/nvm
+ENV NODE_VERSION 14
+
+RUN bash install_deps.sh && \
+    ln -s /code/SuperBuild/install/bin/untwine /usr/bin/untwine && \
+    ln -s /code/SuperBuild/install/bin/entwine /usr/bin/entwine && \
+    ln -s /code/SuperBuild/install/bin/pdal /usr/bin/pdal && \
+    ln -s /var/www/node.sh /usr/bin/node && \
+    mkdir -p tmp && node index.js --powercycle
 
 ENTRYPOINT ["/usr/bin/node", "/var/www/index.js"]

@@ -1,9 +1,9 @@
 /*
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap.
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM.
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -12,26 +12,28 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 "use strict";
 
-const config = require("../config");
-const async = require("async");
-const assert = require("assert");
-const logger = require("./logger");
-const fs = require("fs");
-const path = require("path");
-const rmdir = require("rimraf");
-const odmRunner = require("./odmRunner");
-const processRunner = require("./processRunner");
-const Directories = require("./Directories");
-const kill = require("tree-kill");
-const S3 = require("./S3");
-const request = require("request");
-const utils = require("./utils");
-const archiver = require("archiver");
+const config = require('../config');
+const async = require('async');
+const os = require('os');
+const assert = require('assert');
+const logger = require('./logger');
+const fs = require('fs');
+const path = require('path');
+const rmdir = require('rimraf');
+const odmRunner = require('./odmRunner');
+const odmInfo = require('./odmInfo');
+const processRunner = require('./processRunner');
+const Directories = require('./Directories');
+const kill = require('tree-kill');
+const S3 = require('./S3');
+const request = require('request');
+const utils = require('./utils');
+const archiver = require('archiver');
 
 const stream = require("stream");
 const { parser } = require("stream-json");
@@ -39,10 +41,9 @@ const { ignore } = require("stream-json/filters/Ignore");
 const { streamArray } = require("stream-json/streamers/StreamArray");
 const readline = require("readline");
 const utm = require("utm");
-const AbstractTask = require("./AbstractTask");
 
-
-const statusCodes = require("./statusCodes");
+const statusCodes = require('./statusCodes');
+const AbstractTask = require('./AbstractTask');
 
 module.exports = class Task extends AbstractTask {
     constructor(
@@ -52,17 +53,16 @@ module.exports = class Task extends AbstractTask {
         name,
         options = [],
         webhook = null,
-        skipPostProcessing = false,
+        skipPostProcessing = true,
         outputs = [],
         output,
         dateCreated = new Date().getTime(),
-        done = () => { }
+        imagesCountEstimate = -1
     ) {
         super();
 
-        assert(projectId !== undefined, 'projectId must be set');
         assert(uuid !== undefined, "uuid must be set");
-        assert(done !== undefined, "ready must be set");
+        assert(projectId !== undefined, "projectId must be set");
 
         this.uuid = uuid;
         this.projectId = projectId;
@@ -73,10 +73,11 @@ module.exports = class Task extends AbstractTask {
             : parseInt(dateCreated);
         this.dateStarted = 0;
         this.processingTime = -1;
-        this.setStatus(statusCodes.QUEUED);
+        this.setStatus(statusCodes.RUNNING);
         this.options = options;
         this.gcpFiles = [];
         this.geoFiles = [];
+        this.alignFiles = [];
         this.imageGroupsFiles = [];
         this.output = output || [];
         this.runningProcesses = [];
@@ -85,65 +86,97 @@ module.exports = class Task extends AbstractTask {
         this.outputs = utils.parseUnsafePathsList(outputs);
         this.progress = 0;
 
-        async.series(
-            [
-                // Read images info
-                (cb) => {
-                    fs.readdir(this.getImagesFolderPath(), (err, files) => {
-                        if (err) cb(err);
-                        else {
-                            this.images = files;
-                            logger.debug(
-                                `Found ${this.images.length} images for ${this.uuid}`
-                            );
-                            cb(null);
-                        }
-                    });
-                },
+        this.imagesCountEstimate = imagesCountEstimate;
+        this.initialized = false;
+        this.onInitialize = []; // Events to trigger on initialization
+    }
 
-                // Find GCP (if any)
-                (cb) => {
-                    fs.readdir(this.getGcpFolderPath(), (err, files) => {
-                        if (err) cb(err);
-                        else {
-                            files.forEach((file) => {
-                                if (/^geo\.txt$/gi.test(file)) {
-                                    this.geoFiles.push(file);
-                                } else if (/^image_groups\.txt$/gi.test(file)) {
-                                    this.imageGroupsFiles.push(file);
-                                } else if (/\.txt$/gi.test(file)) {
-                                    this.gcpFiles.push(file);
-                                }
-                            });
-                            logger.debug(
-                                `Found ${this.gcpFiles.length
-                                } GCP files (${this.gcpFiles.join(" ")}) for ${this.uuid
-                                }`
-                            );
-                            logger.debug(
-                                `Found ${this.geoFiles.length
-                                } GEO files (${this.geoFiles.join(" ")}) for ${this.uuid
-                                }`
-                            );
-                            logger.debug(
-                                `Found ${this.imageGroupsFiles.length
-                                } image groups files (${this.imageGroupsFiles.join(
-                                    " "
-                                )}) for ${this.uuid}`
-                            );
-                            cb(null);
-                        }
-                    });
-                },
-            ],
-            (err) => {
-                done(err, this);
+    initialize(done, additionalSteps = []) {
+        async.series(additionalSteps.concat(this.setPostProcessingOptsSteps(), [
+            // Read images info
+            cb => {
+                fs.readdir(this.getImagesFolderPath(), (err, files) => {
+                    if (err) cb(err);
+                    else {
+                        this.images = files;
+                        logger.debug(`Found ${this.images.length} images for ${this.uuid}`);
+                        cb(null);
+                    }
+                });
+            },
+
+            // Find GCP (if any)
+            cb => {
+                fs.readdir(this.getGcpFolderPath(), (err, files) => {
+                    if (err) cb(err);
+                    else {
+                        files.forEach(file => {
+                            if (/^geo\.txt$/gi.test(file)) {
+                                this.geoFiles.push(file);
+                            } else if (/^image_groups\.txt$/gi.test(file)) {
+                                this.imageGroupsFiles.push(file);
+                            } else if (/\.txt$/gi.test(file)) {
+                                this.gcpFiles.push(file);
+                            } else if (/^align\.(tif|laz|las)$/gi.test(file)) {
+                                this.alignFiles.push(file);
+                            }
+                            logger.debug(file);
+                        });
+                        logger.debug(`Found ${this.gcpFiles.length} GCP files (${this.gcpFiles.join(" ")}) for ${this.uuid}`);
+                        logger.debug(`Found ${this.geoFiles.length} GEO files (${this.geoFiles.join(" ")}) for ${this.uuid}`);
+                        logger.debug(`Found ${this.imageGroupsFiles.length} image groups files (${this.imageGroupsFiles.join(" ")}) for ${this.uuid}`);
+                        logger.debug(`Found ${this.alignFiles.length} alignment files (${this.alignFiles.join(" ")}) for ${this.uuid}`);
+
+                        cb(null);
+                    }
+                });
             }
-        );
+        ]), err => {
+            // Status might have changed due to user action
+            // in which case we leave it unchanged
+            if (this.getStatus() === statusCodes.RUNNING) {
+                if (err) this.setStatus(statusCodes.FAILED, { errorMessage: err.message });
+                else this.setStatus(statusCodes.QUEUED);
+            }
+            this.initialized = true;
+            this.onInitialize.forEach(evt => evt(this));
+            this.onInitialize = [];
+            done(err, this);
+        });
+    }
+
+    setPostProcessingOptsSteps() {
+
+        const autoSet = (opt) => {
+            return cb => {
+                // If we need to post process results
+                // if opt is supported
+                // we automatically add the opt to the task options by default
+                if (this.skipPostProcessing) cb();
+                else {
+                    odmInfo.supportsOption(opt, (err, supported) => {
+                        if (err) {
+                            console.warn(`Cannot check for supported option ${opt}: ${err}`);
+                        } else if (supported) {
+                            if (!this.options.find(o => o.name === opt)) {
+                                this.options.push({ name: opt, value: true });
+                            }
+                        }
+                        cb();
+                    });
+                }
+            }
+        };
+
+        return [
+            autoSet("pc-ept"),
+            autoSet("cog"),
+            autoSet("gltf")
+        ];
     }
 
     static CreateFromSerialized(taskJson, done) {
-        new Task(
+        const task = new Task(
             taskJson.uuid,
             taskJson.projectId,
             taskJson.imageLinks,
@@ -153,24 +186,25 @@ module.exports = class Task extends AbstractTask {
             taskJson.skipPostProcessing,
             taskJson.outputs,
             taskJson.output,
-            taskJson.dateCreated,
-            (err, task) => {
-                if (err) done(err);
-                else {
-                    // Override default values with those
-                    // provided in the taskJson
-                    for (let k in taskJson) {
-                        task[k] = taskJson[k];
-                    }
-
-                    // Tasks that were running should be put back to QUEUED state
-                    if (task.status.code === statusCodes.RUNNING) {
-                        task.status.code = statusCodes.QUEUED;
-                    }
-                    done(null, task);
-                }
-            }
+            taskJson.dateCreated
         );
+
+        task.initialize((err, task) => {
+            if (err) done(err);
+            else {
+                // Override default values with those
+                // provided in the taskJson
+                for (let k in taskJson) {
+                    task[k] = taskJson[k];
+                }
+
+                // Tasks that were running should be put back to QUEUED state
+                if (task.status.code === statusCodes.RUNNING) {
+                    task.status.code = statusCodes.QUEUED;
+                }
+                done(null, task);
+            }
+        });
     }
 
     // Get path where images are stored for this task
@@ -207,7 +241,10 @@ module.exports = class Task extends AbstractTask {
 
     // Deletes files and folders related to this task
     cleanup(cb) {
-        rmdir(this.getProjectFolderPath(), cb);
+        if (this.initialized) rmdir(this.getProjectFolderPath(), cb);
+        else this.onInitialize.push(() => {
+            rmdir(this.getProjectFolderPath(), cb);
+        });
     }
 
     setStatus(code, extra) {
@@ -234,9 +271,9 @@ module.exports = class Task extends AbstractTask {
     }
 
     updateProcessingTime(resetTime) {
-        this.processingTime = resetTime
-            ? -1
-            : new Date().getTime() - this.dateCreated;
+        this.processingTime = (resetTime || this.dateStarted === 0) ?
+            -1 :
+            new Date().getTime() - this.dateStarted;
     }
 
     startTrackingProcessingTime() {
@@ -326,12 +363,10 @@ module.exports = class Task extends AbstractTask {
                 return (done) => {
                     this.output.push(`Compressing ${outputFilename}\n`);
 
-                    const zipFile = path.resolve(
-                        this.getAssetsArchivePath(outputFilename)
-                    );
-                    const sourcePath = !config.test
-                        ? this.getProjectFolderPath()
-                        : path.join("tests", "processing_results");
+                    const zipFile = path.resolve(this.getAssetsArchivePath(outputFilename));
+                    const sourcePath = !config.test ?
+                        this.getProjectFolderPath() :
+                        path.join("tests", "processing_results");
 
                     const pathsToArchive = [];
                     files.forEach((f) => {
@@ -395,9 +430,9 @@ module.exports = class Task extends AbstractTask {
                     archive.pipe(output);
                     let globs = [];
 
-                    const sourcePath = !config.test
-                        ? this.getProjectFolderPath()
-                        : path.join("tests", "processing_results");
+                    const sourcePath = !config.test ?
+                        this.getProjectFolderPath() :
+                        path.join("tests", "processing_results");
 
                     // Process files and directories first
                     files.forEach((file) => {
@@ -424,7 +459,7 @@ module.exports = class Task extends AbstractTask {
                         let pending = globs.length;
 
                         globs.forEach((pattern) => {
-                            glob(pattern, (err, files) => {
+                            fs.glob(pattern, (err, files) => {
                                 if (err) done(err);
                                 else {
                                     files.forEach((file) => {
@@ -454,51 +489,40 @@ module.exports = class Task extends AbstractTask {
             const runPostProcessingScript = () => {
                 return (done) => {
                     this.runningProcesses.push(
-                        processRunner.runPostProcessingScript(
-                            {
-                                projectFolderPath: this.getProjectFolderPath(),
-                            },
-                            (err, code, _) => {
-                                if (err) done(err);
-                                else {
-                                    if (code === 0) {
-                                        this.updateProgress(93);
-                                        done();
-                                    } else
-                                        done(
-                                            new Error(
-                                                `Process exited with code ${code}`
-                                            )
-                                        );
-                                }
-                            },
+                        processRunner.runPostProcessingScript({
+                            projectFolderPath: this.getProjectFolderPath()
+                        }, (err, code, _) => {
+                            if (err) done(err);
+                            else {
+                                if (code === 0) {
+                                    this.updateProgress(93);
+                                    done();
+                                } else done(new Error(`Postprocessing failed (${code})`));
+                            }
+                        },
                             (output) => {
                                 this.output.push(output);
-                            }
-                        )
-                    );
+                            }))
                 };
             };
 
             // All paths are relative to the project directory (./data/<uuid>/)
-            let allPaths = [
-                "odm_orthophoto/odm_orthophoto.tif",
-                "odm_orthophoto/odm_orthophoto.png",
-                "odm_orthophoto/odm_orthophoto.mbtiles",
-                "odm_georeferencing",
-                "odm_texturing",
-                "odm_dem/dsm.tif",
-                "odm_dem/dtm.tif",
-                "dsm_tiles",
-                "dtm_tiles",
-                "orthophoto_tiles",
-                "potree_pointcloud",
-                "entwine_pointcloud",
-                "images.json",
-                "cameras.json",
-                "task_output.txt",
-                "odm_report",
-            ];
+            let allPaths = ['odm_orthophoto/odm_orthophoto.tif',
+                'odm_orthophoto/odm_orthophoto.tfw',
+                'odm_orthophoto/odm_orthophoto.png',
+                'odm_orthophoto/odm_orthophoto.wld',
+                'odm_orthophoto/odm_orthophoto.mbtiles',
+                'odm_orthophoto/odm_orthophoto.kmz',
+                'odm_orthophoto/odm_orthophoto_extent.dxf',
+                'odm_orthophoto/cutline.gpkg',
+                'odm_georeferencing', 'odm_texturing',
+                'odm_dem/dsm.tif', 'odm_dem/dtm.tif', 'dsm_tiles', 'dtm_tiles',
+                'odm_dem/dsm.euclideand.tif', 'odm_dem/dtm.euclideand.tif',
+                'orthophoto_tiles', 'potree_pointcloud', 'entwine_pointcloud',
+                '3d_tiles',
+                'images.json', 'cameras.json',
+                'task_output.txt', 'log.json',
+                'odm_report'];
 
             // Did the user request different outputs than the default?
             if (this.outputs.length > 0) allPaths = this.outputs;
@@ -549,7 +573,17 @@ module.exports = class Task extends AbstractTask {
                 }
             }
 
-            if (!this.skipPostProcessing && !this.projectId) tasks.push(runPostProcessingScript());
+            // postprocess.sh is still here for legacy/backward compatibility
+            // purposes, but we might remove it in the future. The new logic
+            // instructs the processing engine to do the necessary processing
+            // of outputs without post processing steps (build EPT).
+            // We're leaving it here only for Linux/docker setups, but will not
+            // be triggered on Windows.
+            if (!this.skipPostProcessing && !this.projectId) {
+                if (os.platform() !== "win32") {
+                    tasks.push(runPostProcessingScript());
+                }
+            }
 
             // Sahagozu specific postProcesses
 
@@ -618,7 +652,7 @@ module.exports = class Task extends AbstractTask {
             // Upload to S3 all paths + all.zip file (if config says so)
             if (S3.enabled()) {
                 if (!this.projectId) {
-                    // regular s3 upload 
+                    // regular s3 upload
                     tasks.push((done) => {
                         let s3Paths;
                         if (config.s3UploadEverything) {
@@ -702,9 +736,9 @@ module.exports = class Task extends AbstractTask {
                                 ),
                                 (err) => {
                                     if (!err)
-                                    this.output.push(
-                                        "Uploaded dsm, continuing"
-                                    );
+                                        this.output.push(
+                                            "Uploaded dsm, continuing"
+                                        );
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -728,9 +762,9 @@ module.exports = class Task extends AbstractTask {
                                 ),
                                 (err) => {
                                     if (!err)
-                                    this.output.push(
-                                        "Uploaded dtm, continuing"
-                                    );
+                                        this.output.push(
+                                            "Uploaded dtm, continuing"
+                                        );
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -747,10 +781,10 @@ module.exports = class Task extends AbstractTask {
                         const meshCanditatePaths = fs.readdirSync(path.join(this.getProjectFolderPath(), 'odm_texturing'));
                         const meshPaths = meshCanditatePaths.filter(p => {
                             if (!p.includes('geo'))
-                            return false;
+                                return false;
 
                             if (p.substr(-4) === 'conf')
-                            return false;
+                                return false;
 
                             return true;
                         }).map(e => path.join(this.getProjectFolderPath(), 'odm_texturing', e));
@@ -906,9 +940,9 @@ module.exports = class Task extends AbstractTask {
 
                 tasks.push(cb => {
                     const reference_lla = JSON.parse(fs.readFileSync(path.join(this.getProjectFolderPath(), 'opensfm', 'reference_lla.json'), { encoding: 'utf8' }));
-                    const {zoneNum} = utm.fromLatLon(reference_lla.latitude, reference_lla.longitude);
+                    const { zoneNum } = utm.fromLatLon(reference_lla.latitude, reference_lla.longitude);
                     const srsString = `WGS84 UTM ${zoneNum}${reference_lla.latitude > 0 ? 'N' : 'S'}\n`;
-                    const gcpString = srsString + this.gcpMarks.map(({filename, x, y, z, u, v}) => `${x} ${y} ${z} ${u} ${v} ${filename}`).join('\n');
+                    const gcpString = srsString + this.gcpMarks.map(({ filename, x, y, z, u, v }) => `${x} ${y} ${z} ${u} ${v} ${filename}`).join('\n');
 
                     fs.writeFile(
                         path.join(this.getProjectFolderPath(), 'opensfm', 'gcp_list.txt'),
@@ -966,13 +1000,6 @@ module.exports = class Task extends AbstractTask {
 
             runnerOptions["project-path"] = fs.realpathSync(Directories.data);
 
-            if (this.outputs.length && this.outputs.includes("odm_dem/dtm.tif"))
-                runnerOptions["dtm"] = true;
-
-
-            if (this.outputs.length && this.outputs.includes("odm_dem/dsm.tif"))
-                runnerOptions["dsm"] = true;
-
             const downloadTasks = this.imageLinks.length && !this.imagesDownloaded ? this.imageLinks.map(dlLink => cb => {
                 const imageName = dlLink.split('/').pop();
                 const p = path.join(this.getImagesFolderPath(), imageName);
@@ -992,61 +1019,76 @@ module.exports = class Task extends AbstractTask {
                 } else {
                     this.imagesDownloaded = true;
                     // TODO update this.images
+
+                    if (this.outputs.length && this.outputs.includes("odm_dem/dtm.tif"))
+                        runnerOptions["dtm"] = true;
+
+                    if (this.outputs.length && this.outputs.includes("odm_dem/dsm.tif"))
+                        runnerOptions["dsm"] = true;
+
                     if (this.gcpFiles.length > 0) {
-                        runnerOptions.gcp = fs.realpathSync(
-                            path.join(this.getGcpFolderPath(), this.gcpFiles[0])
-                        );
+                        runnerOptions.gcp = fs.realpathSync(path.join(this.getGcpFolderPath(), this.gcpFiles[0]));
                     }
                     if (this.geoFiles.length > 0) {
-                        runnerOptions.geo = fs.realpathSync(
-                            path.join(this.getGcpFolderPath(), this.geoFiles[0])
-                        );
+                        runnerOptions.geo = fs.realpathSync(path.join(this.getGcpFolderPath(), this.geoFiles[0]));
+                    }
+                    if (this.alignFiles.length > 0) {
+                        runnerOptions.align = fs.realpathSync(path.join(this.getGcpFolderPath(), this.alignFiles[0]));
                     }
                     if (this.imageGroupsFiles.length > 0) {
-                        runnerOptions["split-image-groups"] = fs.realpathSync(
-                            path.join(this.getGcpFolderPath(), this.imageGroupsFiles[0])
-                        );
+                        runnerOptions["split-image-groups"] = fs.realpathSync(path.join(this.getGcpFolderPath(), this.imageGroupsFiles[0]));
                     }
 
-                    this.runningProcesses.push(
-                        odmRunner.run(
-                            runnerOptions,
-                            this.uuid,
-                            (err, code, signal) => {
-                                if (err) {
-                                    this.setStatus(statusCodes.FAILED, {
-                                        errorMessage: `Could not start process (${err.message})`,
-                                    });
-                                    finished(err);
+                    this.runningProcesses.push(odmRunner.run(runnerOptions, this.uuid, (err, code, signal) => {
+                        if (err) {
+                            this.setStatus(statusCodes.FAILED, { errorMessage: `Could not start process (${err.message})` });
+                            finished(err);
+                        } else {
+                            // Don't evaluate if we caused the process to exit via SIGINT?
+                            if (this.status.code !== statusCodes.CANCELED) {
+                                if (code === 0) {
+                                    postProcess();
                                 } else {
-                                    // Don't evaluate if we caused the process to exit via SIGINT?
-                                    if (this.status.code !== statusCodes.CANCELED) {
-                                        if (code === 0) {
-                                            postProcess();
-                                        } else {
-                                            this.setStatus(statusCodes.FAILED, {
-                                                errorMessage: `Process exited with code ${code}`,
-                                            });
-                                            finished();
-                                        }
-                                    } else {
-                                        finished();
+                                    let errorMessage = "";
+                                    switch (code) {
+                                        case 1:
+                                        case 139:
+                                        case 134:
+                                            errorMessage = `Cannot process dataset`;
+                                            break;
+                                        case 137:
+                                            errorMessage = `Not enough memory`;
+                                            break;
+                                        case 132:
+                                            errorMessage = `Unsupported CPU`;
+                                            break;
+                                        case 3:
+                                            errorMessage = `Installation issue`;
+                                            break;
+                                        default:
+                                            errorMessage = `Processing failed (${code})`;
+                                            break;
                                     }
+                                    this.setStatus(statusCodes.FAILED, { errorMessage });
+                                    finished();
                                 }
-                            },
-                            (output) => {
-                                // Replace console colors
-                                output = output.replace(/\x1b\[[0-9;]*m/g, "");
-
-                                // Split lines and trim
-                                output
-                                    .trim()
-                                    .split("\n")
-                                    .forEach((line) => {
-                                        this.output.push(line.trim());
-                                    });
+                            } else {
+                                finished();
                             }
-                        )
+                        }
+                    },
+                        (output) => {
+                            // Replace console colors
+                            output = output.replace(/\x1b\[[0-9;]*m/g, "");
+
+                            // Split lines and trim
+                            output
+                                .trim()
+                                .split("\n")
+                                .forEach((line) => {
+                                    this.output.push(line.trim());
+                                });
+                        })
                     );
                 }
             });
@@ -1169,14 +1211,17 @@ module.exports = class Task extends AbstractTask {
     // Re-executes the task (by setting it's state back to QUEUED)
     // Only tasks that have been canceled, completed or have failed can be restarted.
     // if reoptimize is true, only bundle adjustment will be run
+    // unless they are being initialized, in which case we switch them back to running
     restart(options, cb) {
-        if (
-            [
-                statusCodes.CANCELED,
-                statusCodes.FAILED,
-                statusCodes.COMPLETED,
-            ].indexOf(this.status.code) !== -1
-        ) {
+        if (!this.initialized && this.status.code === statusCodes.CANCELED) {
+            this.setStatus(statusCodes.RUNNING);
+            if (options !== undefined) {
+                this.options = options;
+                async.series(this.setPostProcessingOptsSteps(), cb);
+            } else {
+                cb();
+            }
+        } else if ([statusCodes.CANCELED, statusCodes.FAILED, statusCodes.COMPLETED].indexOf(this.status.code) !== -1) {
             this.setStatus(statusCodes.QUEUED);
             if (!this.reoptimize) {
                 this.dateCreated = new Date().getTime();
@@ -1184,7 +1229,12 @@ module.exports = class Task extends AbstractTask {
                 this.output = [];
                 this.progress = 0;
                 this.stopTrackingProcessingTime(true);
-                if (options !== undefined) this.options = options;
+                if (options !== undefined) {
+                    this.options = options;
+                    async.series(this.setPostProcessingOptsSteps(), cb);
+                } else {
+                    cb();
+                }
             }
             cb(null);
         } else {
@@ -1202,9 +1252,9 @@ module.exports = class Task extends AbstractTask {
             processingTime: this.processingTime,
             status: this.status,
             options: this.options,
-            imagesCount: this.images.length,
-            progress: this.progress,
-            outputs: this.outputs
+            outputs: this.outputs,
+            imagesCount: this.images !== undefined ? this.images.length : this.imagesCountEstimate,
+            progress: this.progress
         };
     }
 
@@ -1217,11 +1267,11 @@ module.exports = class Task extends AbstractTask {
     // Reads the contents of the tasks's
     // images.json and returns its JSON representation
     readImagesDatabase(callback) {
-        const imagesDbPath = !config.test
-            ? path.join(this.getProjectFolderPath(), "images.json")
-            : path.join("tests", "processing_results", "images.json");
+        const imagesDbPath = !config.test ?
+            path.join(this.getProjectFolderPath(), 'images.json') :
+            path.join('tests', 'processing_results', 'images.json');
 
-        fs.readFile(imagesDbPath, "utf8", (err, data) => {
+        fs.readFile(imagesDbPath, 'utf8', (err, data) => {
             if (err) callback(err);
             else {
                 try {
@@ -1269,7 +1319,6 @@ module.exports = class Task extends AbstractTask {
             }
         });
     }
-
     // Returns the data necessary to serialize this
     // task to restore it later.
     serialize() {

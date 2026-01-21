@@ -30,6 +30,69 @@ Linux users can connect to 127.0.0.1.
 
 If the computer running NodeODM is using an old or 32bit CPU, you need to compile OpenDroneMap from sources and setup NodeODM natively. You cannot use docker. Docker images work with CPUs with 64-bit extensions, MMX, SSE, SSE2, SSE3 and SSSE3 instruction set support or higher. Seeing a `Illegal instruction` error while processing images is an indication that your CPU is too old. 
 
+### Building docker image
+
+If you need to test changes as a docker image, you can build easily as follows:
+
+```
+docker build -t my_nodeodm_image --no-cache .
+```
+
+Run as follows:
+
+```
+docker run -p 3000:3000 my_nodeodm_image &
+```
+
+
+### Testing alternative ODM images through NodeODM
+
+In order to test alternative ODM docker images in NodeODM, you will need to change the dockerfile for NodeODM to point to your ODM image. For example if you built an alternate ODM image as follows:
+
+```
+docker build -t my_odm_image --no-cache .
+```
+
+Then modify NodeODM's Dockerfile to point to the new ODM image in the first line:
+
+```
+FROM my_odm_image
+MAINTAINER Piero Toffanin <pt@masseranolabs.com>
+
+EXPOSE 3000
+...
+```
+
+Then build the NodeODM image:
+
+```
+docker build -t my_nodeodm_image --no-cache .
+```
+
+Finally run as follows:
+
+```
+docker run -p 3000:3000 my_nodeodm_image &
+```
+
+### Running rootless
+
+* A rootless alternative to Docker is using [Apptainer](https://apptainer.org/). In order to run NodeODM together with ClusterODM in rootless environments, for example on HPC, we need a rootless alternative to Docker, and that's where Apptainer comes in to play. From the Linux command line, cd into the NodeODM folder and run the following commands to host a NodeODM instance:
+
+```
+apptainer build --sandbox node/ apptainer.def
+apptainer run --writable node/ 
+```
+
+`apptainer build --sandbox` requires you to have root permission to build this apptainer container. Make sure someone with root permission build this for you. You will need to build this apptainer container if you want to work with ClusterODM on the HPC. Check for [ClusterODM](https://github.com/OpenDroneMap/ClusterODM) for more instructions on using SLURM to set it up.
+
+An apptainer.def file can be built directly from the dockerfile as needed:
+
+```
+pip3 install spython
+spython recipe Dockerfile &> apptainer.def
+```
+
 ## API Docs
 
 See the [API documentation page](https://github.com/OpenDroneMap/NodeODM/blob/master/docs/index.adoc).
@@ -49,6 +112,45 @@ docker run -p 3000:3000 -v /mnt/external_hd:/var/www/data opendronemap/nodeodm
 ```
 
 This can be also used to access the computation results directly from the file system.
+
+## Using GPU Acceleration
+
+Since ODM has support [for GPU acceleration](https://github.com/OpenDroneMap/ODM#gpu-acceleration) you can use another base image for GPU processing. You need to use the `opendronemap/nodeodm:gpu` docker image instead of `opendronemap/nodeodm` and you need to pass the `--gpus all` flag:
+
+```bash
+docker run -p 3000:3000 --gpus all opendronemap/nodeodm:gpu
+```
+
+The GPU implementation is CUDA-based, so will only work on NVIDIA GPUs.
+
+If you have an NVIDIA card, you can test that docker is recognizing the GPU by running:
+
+```
+docker run --rm --gpus all nvidia/cuda:10.0-base nvidia-smi
+```
+
+If you see an output that looks like this:
+
+```
+Fri Jul 24 18:51:55 2020       
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 440.82       Driver Version: 440.82       CUDA Version: 10.2     |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+```
+
+You're in good shape!
+
+See https://github.com/NVIDIA/nvidia-docker and https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker for information on docker/NVIDIA setup.
+
+### Windows Bundle
+
+NodeODM can run as a self-contained executable on Windows without the need for additional dependencies (except for [ODM](https://github.com/OpenDroneMap/ODM) which needs to be installed separately). You can download the latest `nodeodm-windows-x64.zip` bundle from the [releases](https://github.com/OpenDroneMap/NodeODM/releases) page. Extract the contents in a folder and run:
+
+```bash
+nodeodm.exe --odm_path c:\path\to\ODM
+```
 
 ### Run it Natively
 

@@ -1,9 +1,9 @@
 /*
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap.
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM.
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -12,22 +12,22 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 "use strict";
 
-const fs = require("fs");
-const path = require("path")
-const config = require("./config.js");
-const packageJson = JSON.parse(fs.readFileSync("./package.json"));
+const fs = require('fs');
+const path = require('path');
+const config = require('./config.js');
+const packageJson = JSON.parse(fs.readFileSync('./package.json'));
 
 const logger = require("./libs/logger");
 const async = require("async");
 const mime = require("mime");
 
-const cors = require('cors');
-const express = require("express");
+const cors = require('cors')
+const express = require('express');
 const app = express();
 
 const bodyParser = require("body-parser");
@@ -43,8 +43,10 @@ const authCheck = auth.getMiddleware();
 const taskNew = require("./libs/taskNew");
 
 app.use(cors())
-app.use(express.static("public"));
-app.use("/swagger.json", express.static("docs/swagger.json"));
+app.options('*', cors())
+
+app.use(express.static('public'));
+app.use('/swagger.json', express.static('docs/swagger.json'));
 
 const formDataParser = multer().none();
 const urlEncodedBodyParser = bodyParser.urlencoded({ extended: false });
@@ -153,7 +155,7 @@ app.post(
  *        -
  *          name: images
  *          in: formData
- *          description: Images to process, plus optional files such as a GEO file (geo.txt), image groups file (image_groups.txt), GCP file (*.txt) or seed file (seed.zip). If included, the GCP file should have .txt extension. If included, the seed archive pre-polulates the task directory with its contents.
+ *          description: Images to process, plus optional files such as a GEO file (geo.txt), image groups file (image_groups.txt), GCP file (*.txt), seed file (seed.zip) or alignment files (align.las, align.laz, align.tif). If included, the GCP file should have .txt extension. If included, the seed archive pre-polulates the task directory with its contents.
  *          required: true
  *          type: file
  *        -
@@ -277,7 +279,7 @@ app.post(
  *        -
  *          name: images
  *          in: formData
- *          description: Images to process, plus optional files such as a GEO file (geo.txt), image groups file (image_groups.txt), GCP file (*.txt) or seed file (seed.zip). If included, the GCP file should have .txt extension. If included, the seed archive pre-polulates the task directory with its contents.
+ *          description: Images to process, plus optional files such as a GEO file (geo.txt), image groups file (image_groups.txt), GCP file (*.txt), seed file (seed.zip) or alignment files (align.las, align.laz, align.tif). If included, the GCP file should have .txt extension. If included, the seed archive pre-polulates the task directory with its contents.
  *          required: false
  *          type: file
  *        -
@@ -349,25 +351,16 @@ app.post(
  *          schema:
  *            $ref: '#/definitions/Error'
  */
-app.post(
-    "/task/new",
-    authCheck,
-    taskNew.assignUUID,
-    taskNew.uploadImages,
-    (req, res, next) => {
-        req.body = req.body || {};
-        if ((!req.files || req.files.length === 0) && !req.body.zipurl)
-            req.error = "Need at least 1 file or a zip file url.";
-        else if (
-            config.maxImages &&
-            req.files &&
-            req.files.length > config.maxImages
-        )
-            req.error = `${req.files.length} images uploaded, but this node can only process up to ${config.maxImages}.`;
-        next();
-    },
-    taskNew.createTask
-);
+app.post('/task/new', authCheck, taskNew.assignUUID, taskNew.uploadImages, (req, res, next) => {
+    req.body = req.body || {};
+    if ((!req.files || req.files.length === 0) && !req.body.zipurl) req.error = "Need at least 1 file or a zip file url.";
+    else if (config.maxImages && req.files && req.files.length > config.maxImages) req.error = `${req.files.length} images uploaded, but this node can only process up to ${config.maxImages}.`;
+    else if ((!req.files || req.files.length === 0) && req.body.zipurl) {
+        const srcPath = path.join("tmp", req.id);
+        fs.mkdirSync(srcPath);
+    }
+    next();
+}, taskNew.createTask);
 
 let getTaskFromUuid = (req, res, next) => {
     const uuid = req.params.uuid ? req.params.uuid : req.body.uuid || '';
@@ -487,7 +480,7 @@ app.get("/task/list", authCheck, (req, res) => {
  *          schema:
  *            $ref: '#/definitions/Error'
  */
-app.post("/task/singular/new", 
+app.post("/task/singular/new",
     authCheck,
     taskNew.assignUUID,
     formDataParser,
@@ -1220,15 +1213,31 @@ let commands = [
         TaskManager.initialize(cb);
         taskManager = TaskManager.singleton();
     },
-    (cb) => {
-        server = app.listen(config.port, (err) => {
-            if (!err)
-                logger.info(
-                    "Server has started on port " + String(config.port)
-                );
-            cb(err);
-        });
-    },
+    cb => {
+        const startServer = (port, cb) => {
+            server = app.listen(parseInt(port), (err) => {
+                if (!err) logger.info('Server has started on port ' + String(port));
+                cb(err);
+            });
+            server.on("error", cb);
+        };
+
+        const tryStartServer = (port, cb) => {
+            startServer(port, (err) => {
+                if (err && err.code === 'EADDRINUSE' && port < 5000){
+                    tryStartServer(port + 1, cb);
+                }else cb(err);
+            });
+        };
+
+        if (Number.isInteger(parseInt(config.port))){
+            startServer(config.port, cb);
+        }else if (config.port === "auto"){
+            tryStartServer(3000, cb);
+        }else{
+            cb(new Error(`Invalid port: ${config.port}`));
+        }
+    }
 ];
 
 if (config.powercycle) {
@@ -1240,7 +1249,7 @@ if (config.powercycle) {
 
 async.series(commands, (err) => {
     if (err) {
-        logger.error("Error during startup: " + err.message);
+        logger.error(err.message);
         process.exit(1);
     }
 });

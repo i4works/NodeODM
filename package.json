@@ -1,10 +1,11 @@
 {
   "name": "NodeODM",
-  "version": "2.1.4",
+  "version": "2.2.4",
   "description": "REST API to access ODM",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "winbundle": "node scripts/winbundle.js"
   },
   "repository": {
     "type": "git",
@@ -41,8 +42,9 @@
     "tree-kill": "^1.2.1",
     "utm": "^1.1.1",
     "uuid": "^3.3.2",
-    "winston": "^3.3.3",
-    "yaml": "^1.10.2"
+    "yaml": "^1.10.2",
+    "winston": "3.17.0",
+    "@dabh/diagnostics": "2.0.3"
   },
   "devDependencies": {
     "grunt": "^1.0.3",

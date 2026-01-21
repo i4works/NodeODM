@@ -50,3 +50,6 @@ devConfig.json
 # potreeconverter 2.0 bug prevents it from running when in $PATH
 PotreeConverter
 
+apps/
+nodeodm.exe
+dist/

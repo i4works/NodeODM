@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 '''
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap. 
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM. 
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -13,29 +13,38 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
 import sys
-import imp
+import importlib.util
+import importlib.machinery
+import types
 import argparse
 import json
 import os
+
+def load_source(module_name, filename):
+    loader = importlib.machinery.SourceFileLoader(module_name, filename)
+    module = types.ModuleType(loader.name)
+    module.__file__ = filename
+    loader.exec_module(module)
+    return module
 
 dest_file = os.environ.get("ODM_OPTIONS_TMP_FILE")
 
 sys.path.append(sys.argv[2])
 
 try:
-    imp.load_source('opendm', sys.argv[2] + '/opendm/__init__.py')
+    load_source('opendm', sys.argv[2] + '/opendm/__init__.py')
 except:
     pass
 try:
-    imp.load_source('context', sys.argv[2] + '/opendm/context.py')
+    load_source('context', sys.argv[2] + '/opendm/context.py')
 except:
     pass
-odm = imp.load_source('config', sys.argv[2] + '/opendm/config.py')
+odm = load_source('config', sys.argv[2] + '/opendm/config.py')
 
 options = {}
 class ArgumentParserStub(argparse.ArgumentParser):

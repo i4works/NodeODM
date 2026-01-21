@@ -1,9 +1,9 @@
 /*
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap.
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM.
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -12,11 +12,12 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 "use strict";
 let fs = require('fs');
+let os = require('os');
 let path = require('path');
 let assert = require('assert');
 let spawn = require('child_process').spawn;
@@ -28,8 +29,8 @@ module.exports = {
     run: function(options, projectName, done, outputReceived){
         assert(projectName !== undefined, "projectName must be specified");
         assert(options["project-path"] !== undefined, "project-path must be defined");
-
-        const command = path.join(config.odm_path, "run.sh"),
+        
+        const command = path.join(config.odm_path, os.platform() === "win32" ? "run.bat" : "run.sh"),
               params = [];
 
         for (var name in options){
@@ -70,7 +71,9 @@ module.exports = {
         }
 
         // Launch
-        let childProcess = spawn(command, params, {cwd: config.odm_path});
+        const env = utils.clone(process.env);
+        env.ODM_NONINTERACTIVE = 1;
+        let childProcess = spawn(command, params, {cwd: config.odm_path, env});
 
         childProcess
             .on('exit', (code, signal) => done(null, code, signal))
@@ -123,8 +126,14 @@ module.exports = {
             // Launch
             const env = utils.clone(process.env);
             env.ODM_OPTIONS_TMP_FILE = utils.tmpPath(".json");
-            let childProcess = spawn(pythonExe, [path.join(__dirname, "..", "helpers", "odmOptionsToJson.py"),
-                    "--project-path", config.odm_path, "bogusname"], { env });
+            env.ODM_PATH = config.odm_path;
+            const shQuote = s =>  {
+                s = s.replace(/"/g, "")
+                return `"${s}"`;
+            }
+
+            let childProcess = spawn(pythonExe, [shQuote(path.join(__dirname, "..", "helpers", "odmOptionsToJson.py")),
+                    "--project-path", shQuote(config.odm_path), "bogusname"], { env, shell: true });
     
             // Cleanup on done
             let handleResult = (err, result) => {
@@ -154,11 +163,15 @@ module.exports = {
                 })
                 .on('error', handleResult);
         }
-
-        // Try Python3 first
-        getOdmOptions("python3", (err, result) => {
-            if (err) getOdmOptions("python", done);
-            else done(null, result);
-        });
+        
+        if (os.platform() === "win32"){
+            getOdmOptions("helpers\\odm_python.bat", done);
+        }else{
+            // Try Python3 first
+            getOdmOptions("python3", (err, result) => {
+                if (err) getOdmOptions("python", done);
+                else done(null, result);
+            });
+        }
     }
 };

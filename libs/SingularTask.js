@@ -9,7 +9,6 @@ const fs = require("fs");
 const request = require("request");
 
 const config = require("../config");
-const AbstractTask = require("./AbstractTask");
 const processRunner = require("./processRunner");
 const Directories = require("./Directories");
 const S3 = require("./S3");
@@ -17,6 +16,7 @@ const zipUtils = require('./ziputils');
 const logger = require("./logger");
 
 const statusCodes = require('./statusCodes');
+const AbstractTask = require("./AbstractTask");
 
 
 module.exports = class SingularTask extends AbstractTask {
@@ -29,12 +29,11 @@ module.exports = class SingularTask extends AbstractTask {
         taskType,
         output,
         dateCreated = new Date().getTime(),
-        done = () => {}
     ) {
         super();
+
         assert(projectId !== undefined, 'projectId must be set');
         assert(uuid !== undefined, "uuid must be set");
-        assert(done !== undefined, "ready must be set");
         assert(taskType !== undefined, "taskType must be set");
         assert(options.length, 'options must be set');
 
@@ -52,8 +51,26 @@ module.exports = class SingularTask extends AbstractTask {
         this.progress = 0;
         this.runningProcesses = [];
         this.output = output || [];
-        this.setStatus(statusCodes.QUEUED);
-        done(null, this);
+        this.setStatus(statusCodes.RUNNING);
+        this.initialized = false;
+        this.onInitialize = [];
+    }
+
+    initialize(done, additionalSteps = []) {
+        async.series(additionalSteps.concat([
+            // add here if any generic check is needed for every singularTask
+        ]), err => {
+            // Status might have changed due to user action
+            // in which case we leave it unchanged
+            if (this.getStatus() === statusCodes.RUNNING) {
+                if (err) this.setStatus(statusCodes.FAILED, { errorMessage: err.message });
+                else this.setStatus(statusCodes.QUEUED);
+            }
+            this.initialized = true;
+            this.onInitialize.forEach(evt => evt(this));
+            this.onInitialize = [];
+            done(err, this);
+        });
     }
 
     updateProgress(globalProgress) {
@@ -148,7 +165,7 @@ module.exports = class SingularTask extends AbstractTask {
     }
 
     start(done) {
-        const parsedOptions = this.options.reduce((r, c) => {r[c.name] = c.value; return r;}, {});
+        const parsedOptions = this.options.reduce((r, c) => { r[c.name] = c.value; return r; }, {});
         let taskOutputPath;
 
         const finished = (error) => {
@@ -170,7 +187,7 @@ module.exports = class SingularTask extends AbstractTask {
                     this.stopTrackingProcessingTime();
                     done(error);
                 },
-                () => {}
+                () => { }
             )
         };
 
@@ -183,7 +200,7 @@ module.exports = class SingularTask extends AbstractTask {
 
             switch (this.taskType) {
                 case 'pointcloud': {
-                    const {inputResourceId, outputResourceId, fileName, classify}  = parsedOptions;
+                    const { inputResourceId, outputResourceId, fileName, classify } = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}/task_output.txt`;
 
@@ -208,7 +225,7 @@ module.exports = class SingularTask extends AbstractTask {
                         const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
 
                         S3.uploadPaths(
-                            path.join(this.getProjectFolderPath(),"potree_pointcloud"),
+                            path.join(this.getProjectFolderPath(), "potree_pointcloud"),
                             config.s3Bucket,
                             `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}`,
                             potreePointcloudFolderPaths,
@@ -222,7 +239,7 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
                 }
                 case 'orthophoto': {
-                    const {inputResourceId} = parsedOptions;
+                    const { inputResourceId } = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/orthophoto/${inputResourceId}/task_output.txt`;
 
@@ -255,10 +272,10 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
                 }
                 case 'mesh': {
-                    const {inputResourceId, outputResourceId} = parsedOptions;
+                    const { inputResourceId, outputResourceId } = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/nexus/${outputResourceId}/task_output.txt`;
-                    
+
                     tasks.push(cb => {
                         this.output.push('downloading mesh...')
                         S3.downloadPath(
@@ -299,7 +316,7 @@ module.exports = class SingularTask extends AbstractTask {
                     break;
                 }
                 case 'sg-compare': {
-                    const {prevResourceFilepath, nextResourceFilepath, outputResourcePointcloudId, outputResourcePotreePointcloudId} = parsedOptions;
+                    const { prevResourceFilepath, nextResourceFilepath, outputResourcePointcloudId, outputResourcePotreePointcloudId } = parsedOptions;
 
                     taskOutputPath = `project/${this.projectId}/resource/pointcloud/${outputResourcePointcloudId}/task_output.txt`;
                     let prevResourceFilename = `prev_${path.basename(prevResourceFilepath)}`;
@@ -327,8 +344,8 @@ module.exports = class SingularTask extends AbstractTask {
                                 cb(err);
                             },
                         )
-                    });    
-                    
+                    });
+
                     //this operation prevents replaced filename downloads from s3
                     let updatedPrevResourceFilename, updatedNextResourceFilename;
 
@@ -346,7 +363,7 @@ module.exports = class SingularTask extends AbstractTask {
                         updatedNextResourceFilename = nextResourceFilename;
                     }
 
-                    tasks.push(this.runProcess("sg-compare", {prevResourceFilename: updatedPrevResourceFilename, nextResourceFilename: updatedNextResourceFilename, outputResourcePointcloudId: outputResourcePointcloudId}));
+                    tasks.push(this.runProcess("sg-compare", { prevResourceFilename: updatedPrevResourceFilename, nextResourceFilename: updatedNextResourceFilename, outputResourcePointcloudId: outputResourcePointcloudId }));
                     tasks.push(this.runProcess("pointcloud", { fileName: 'pointcloud.las' }));
                     tasks.push(this.runProcess("pointcloud_post", { fileName: 'pointcloud.las' }));
 
@@ -360,13 +377,13 @@ module.exports = class SingularTask extends AbstractTask {
                             },
                             (output) => this.output.push(output)
                         )
-                    });                    
+                    });
 
                     tasks.push((cb) => {
                         const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
 
                         S3.uploadPaths(
-                            path.join(this.getProjectFolderPath(),"potree_pointcloud"),
+                            path.join(this.getProjectFolderPath(), "potree_pointcloud"),
                             config.s3Bucket,
                             `project/${this.projectId}/resource/potree_pointcloud/${outputResourcePotreePointcloudId}`,
                             potreePointcloudFolderPaths,
@@ -376,12 +393,12 @@ module.exports = class SingularTask extends AbstractTask {
                             },
                             (output) => this.output.push(output)
                         )
-                    });                    
+                    });
 
                     break;
                 }
                 case 'ifc-convert': {
-                    const {inputResourceId, outputResourceId} = parsedOptions; // this might be wrong
+                    const { inputResourceId, outputResourceId } = parsedOptions; // this might be wrong
 
                     taskOutputPath = `project/${this.projectId}/resource/ifc-mesh/${outputResourceId}/task_output.txt`;
 
@@ -485,7 +502,7 @@ module.exports = class SingularTask extends AbstractTask {
                 runner = processRunner.runNxsCompress;
                 break;
             case "ifc-convert":
-                opts= {
+                opts = {
                     inputFile: path.join(this.getProjectFolderPath(), "bim.ifc"),
                     outputFile: path.join(this.getProjectFolderPath(), "bim.glb")
                 }
@@ -505,7 +522,7 @@ module.exports = class SingularTask extends AbstractTask {
                     outputFile: path.join(this.getProjectFolderPath(), options.outputFilename),
                 };
                 runner = processRunner.runPdalTranslate;
-                break;                
+                break;
             default:
                 return (done) => done();
         }
@@ -600,9 +617,9 @@ module.exports = class SingularTask extends AbstractTask {
                         return;
                     }
 
-                    request.post(hook, {json}, (error, response) => {
+                    request.post(hook, { json }, (error, response) => {
                         if (error || response.statusCode != 200) {
-                
+
                             logger.warn(
                                 `Webhook invokation failed, will retry in a bit: ${hook}`
                             );

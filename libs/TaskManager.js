@@ -1,9 +1,9 @@
 /*
-Node-OpenDroneMap Node.js App and REST API to access OpenDroneMap.
-Copyright (C) 2016 Node-OpenDroneMap Contributors
+NodeODM App and REST API to access ODM.
+Copyright (C) 2016 NodeODM Contributors
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
@@ -12,7 +12,7 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 "use strict";
@@ -37,11 +37,11 @@ const CLEANUP_STALE_UPLOADS_AFTER = 1000 * 60 * config.cleanupUploadsAfter; // m
 
 let taskManager;
 
-class TaskManager{
-    constructor(done){
+class TaskManager {
+    constructor(done) {
         this.tasks = {};
         this.runningQueue = [];
-        
+
         const progressReceiver = new ProgressReceiver();
         progressReceiver.addListener(this.onProgressUpdate.bind(this));
 
@@ -61,8 +61,8 @@ class TaskManager{
                     this.dumpTaskList();
                     this.removeStaleUploads();
                 });
-                
-                if (config.maxRuntime > 0){
+
+                if (config.maxRuntime > 0) {
                     // Every minute
                     schedule.scheduleJob('* * * * *', () => {
                         this.checkTimeouts();
@@ -74,7 +74,7 @@ class TaskManager{
         ], done);
     }
 
-    onProgressUpdate(uuid, globalProgress){
+    onProgressUpdate(uuid, globalProgress) {
         const task = this.tasks[uuid];
 
         // Keep 10% for special postprocessing step
@@ -83,12 +83,12 @@ class TaskManager{
 
     // Removes old tasks that have either failed, are completed, or
     // have been canceled.
-    removeOldTasks(done){
+    removeOldTasks(done) {
         let list = [];
         let now = new Date().getTime();
         logger.debug("Checking for old tasks to be removed...");
 
-        for (let uuid in this.tasks){
+        for (let uuid in this.tasks) {
             let task = this.tasks[uuid];
 
             const endWithOption = task.options.filter(o => o.name === "end-with").pop();
@@ -100,9 +100,9 @@ class TaskManager{
             if (task.processingTime > 0) dateFinished += task.processingTime;
 
             if ([statusCodes.FAILED,
-                statusCodes.COMPLETED,
-                statusCodes.CANCELED].indexOf(task.status.code) !== -1 &&
-                now - dateFinished > CLEANUP_TASKS_IF_OLDER_THAN){
+            statusCodes.COMPLETED,
+            statusCodes.CANCELED].indexOf(task.status.code) !== -1 &&
+                now - dateFinished > CLEANUP_TASKS_IF_OLDER_THAN) {
                 list.push(task.uuid);
             }
         }
@@ -115,66 +115,67 @@ class TaskManager{
 
     // Removes directories that don't have a corresponding
     // task associated with it (maybe as a cause of an abrupt exit)
-    removeOrphanedDirectories(done){
+    removeOrphanedDirectories(done) {
         logger.info("Checking for orphaned directories to be removed...");
 
         fs.readdir(Directories.data, (err, entries) => {
             if (err) done(err);
-            else{
+            else {
                 async.eachSeries(entries, (entry, cb) => {
                     let dirPath = path.join(Directories.data, entry);
                     if (fs.statSync(dirPath).isDirectory() &&
                         entry.match(/^[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+$/) &&
-                        !this.tasks[entry]){
+                        !this.tasks[entry]) {
                         logger.info(`Found orphaned directory: ${entry}, removing...`);
                         rmdir(dirPath, cb);
-                    }else cb();
+                    } else cb();
                 }, done);
             }
         });
     }
 
-    removeStaleUploads(done){
+    removeStaleUploads(done) {
         fs.readdir("tmp", (err, entries) => {
             if (err) done(err);
-            else{
+            else {
                 const now = new Date();
                 async.eachSeries(entries, (entry, cb) => {
                     let dirPath = path.join("tmp", entry);
-                    if (entry.match(/^[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+$/)){
+                    if (entry.match(/^[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+\-[\w\d]+$/)) {
                         fs.stat(dirPath, (err, stats) => {
                             if (err) cb(err);
-                            else{
-                                if (stats.isDirectory() && stats.ctime.getTime() + CLEANUP_STALE_UPLOADS_AFTER < now.getTime()){
+                            else {
+                                if (stats.isDirectory() && stats.ctime.getTime() + CLEANUP_STALE_UPLOADS_AFTER < now.getTime()) {
                                     logger.info(`Found stale upload directory: ${entry}, removing...`);
                                     rmdir(dirPath, cb);
-                                }else cb();
+                                } else cb();
                             }
                         });
-                    }else cb();
+                    } else cb();
                 }, done);
             }
         });
     }
 
     // Load tasks that already exists (if any)
-    restoreTaskListFromDump(done){
+    restoreTaskListFromDump(done) {
         fs.readFile(TASKS_DUMP_FILE, (err, data) => {
-            if (!err){
+            if (!err) {
                 let tasks;
-                try{
+                try {
                     tasks = JSON.parse(data.toString());
-                }catch(e){
-                    done(new Error(`Could not load task list. It looks like the ${TASKS_DUMP_FILE} is corrupted (${e.message}). Please manually delete the file and try again.`));
+                } catch (e) {
+                    logger.warn(`Could not load task list. It looks like the ${TASKS_DUMP_FILE} is corrupted (${e.message}).`);
+                    if (done !== undefined) done();
                     return;
                 }
 
                 async.each(tasks, (taskJson, done) => {
-                    const {constructorName, data} = taskJson;
+                    const { constructorName, data } = taskJson;
                     if (constructorName === 'Task') {
                         Task.CreateFromSerialized(data, (err, task) => {
                             if (err) done(err);
-                            else{
+                            else {
                                 this.tasks[task.uuid] = task;
                                 done();
                             }
@@ -182,7 +183,7 @@ class TaskManager{
                     } else if (constructorName === 'SingularTask') {
                         SingularTask.CreateFromSerialized(data, (err, task) => {
                             if (err) done(err);
-                            else{
+                            else {
                                 this.tasks[task.uuid] = task;
                                 done();
                             }
@@ -194,7 +195,7 @@ class TaskManager{
                     logger.info(`Initialized ${tasks.length} tasks`);
                     if (done !== undefined) done();
                 });
-            }else{
+            } else {
                 logger.info("No tasks dump found");
                 if (done !== undefined) done();
             }
@@ -202,9 +203,9 @@ class TaskManager{
     }
 
     // Finds the first QUEUED task.
-    findNextTaskToProcess(){
-        for (let uuid in this.tasks){
-            if (this.tasks[uuid].getStatus() === statusCodes.QUEUED){
+    findNextTaskToProcess() {
+        for (let uuid in this.tasks) {
+            if (this.tasks[uuid].getStatus() === statusCodes.QUEUED && this.tasks[uuid].initialized) {
                 return this.tasks[uuid];
             }
         }
@@ -212,10 +213,10 @@ class TaskManager{
 
     // Finds the next tasks, adds them to the running queue,
     // and starts the tasks (up to the limit).
-    processNextTask(){
-        if (this.runningQueue.length < config.parallelQueueProcessing){
+    processNextTask() {
+        if (this.runningQueue.length < config.parallelQueueProcessing) {
             let task = this.findNextTaskToProcess();
-            if (task){
+            if (task) {
                 this.addToRunningQueue(task);
                 task.start(() => {
                     this.removeFromRunningQueue(task);
@@ -224,22 +225,22 @@ class TaskManager{
 
                 if (this.runningQueue.length < config.parallelQueueProcessing) this.processNextTask();
             }
-        }else{
+        } else {
             // Do nothing
         }
     }
 
-    addToRunningQueue(task){
+    addToRunningQueue(task) {
         assert(task instanceof AbstractTask, "Must be a Task object");
         this.runningQueue.push(task);
     }
 
-    removeFromRunningQueue(task){
+    removeFromRunningQueue(task) {
         assert(task instanceof AbstractTask, "Must be a Task object");
         this.runningQueue = this.runningQueue.filter(t => t !== task);
     }
 
-    addNew(task){
+    addNew(task) {
         assert(task instanceof AbstractTask, "Must be a Task object");
         this.tasks[task.uuid] = task;
 
@@ -248,16 +249,16 @@ class TaskManager{
 
     // Stops the execution of a task
     // (without removing it from the system).
-    cancel(uuid, cb){
+    cancel(uuid, cb) {
         let task = this.find(uuid, cb);
-        if (task){
-            if (!task.isCanceled()){
+        if (task) {
+            if (!task.isCanceled()) {
                 task.cancel(err => {
                     this.removeFromRunningQueue(task);
                     this.processNextTask();
                     cb(err);
                 });
-            }else{
+            } else {
                 cb(null); // Nothing to be done
             }
         }
@@ -265,29 +266,29 @@ class TaskManager{
 
     // Removes a task from the system.
     // Before being removed, the task is canceled.
-    remove(uuid, cb){
+    remove(uuid, cb) {
         this.cancel(uuid, err => {
-            if (!err){
+            if (!err) {
                 let task = this.find(uuid, cb);
-                if (task){
+                if (task) {
                     task.cleanup(err => {
-                        if (!err){
-                            delete(this.tasks[uuid]);
+                        if (!err) {
+                            delete (this.tasks[uuid]);
                             this.processNextTask();
                             cb(null);
-                        }else cb(err);
+                        } else cb(err);
                     });
-                }else; // cb is called by find on error
-            }else cb(err);
+                } else; // cb is called by find on error
+            } else cb(err);
         });
     }
 
     // Restarts (puts back into QUEUED state)
     // a task that is either in CANCELED or FAILED state.
     // When options is set, the task's options are overriden
-    restart(uuid, options, cb){
+    restart(uuid, options, cb) {
         let task = this.find(uuid, cb);
-        if (task){
+        if (task) {
             task.restart(options, err => {
                 if (!err) this.processNextTask();
                 cb(err);
@@ -296,9 +297,9 @@ class TaskManager{
     }
 
     // re-runs bundle adjustment with new gcp marks
-    reoptimize(uuid, gcpMarks, cb){
+    reoptimize(uuid, gcpMarks, cb) {
         let task = this.find(uuid, cb);
-        if (task){
+        if (task) {
             task.reoptimize = true;
             task.gcpMarks = gcpMarks;
             task.restart({}, err => {
@@ -309,7 +310,7 @@ class TaskManager{
     }
 
     // Finds a task by its UUID string.
-    find(uuid, cb){
+    find(uuid, cb) {
         let task = this.tasks[uuid];
         if (!task && cb) cb(new Error(`${uuid} not found`));
         return task;
@@ -317,10 +318,10 @@ class TaskManager{
 
     // Serializes the list of tasks and saves it
     // to disk
-    dumpTaskList(done){
+    dumpTaskList(done) {
         let output = [];
 
-        for (let uuid in this.tasks){
+        for (let uuid in this.tasks) {
             output.push({
                 constructorName: this.tasks[uuid].constructor.name,
                 data: this.tasks[uuid].serialize(),
@@ -334,27 +335,27 @@ class TaskManager{
         });
     }
 
-    getQueueCount(){
+    getQueueCount() {
         let count = 0;
-        for (let uuid in this.tasks){
+        for (let uuid in this.tasks) {
             let task = this.tasks[uuid];
 
             if ([statusCodes.QUEUED,
-                statusCodes.RUNNING].indexOf(task.status.code) !== -1){
+            statusCodes.RUNNING].indexOf(task.status.code) !== -1) {
                 count++;
             }
         }
         return count;
     }
 
-    checkTimeouts(){
-        if (config.maxRuntime > 0){
+    checkTimeouts() {
+        if (config.maxRuntime > 0) {
             let now = new Date().getTime();
 
-            for (let uuid in this.tasks){
+            for (let uuid in this.tasks) {
                 let task = this.tasks[uuid];
-                
-                if (task.isRunning() && task.dateStarted > 0 && (now - task.dateStarted) > config.maxRuntime * 60 * 1000){
+
+                if (task.isRunning() && task.dateStarted > 0 && (now - task.dateStarted) > config.maxRuntime * 60 * 1000) {
                     task.output.push(`Task timed out after ${Math.ceil(task.processingTime / 60 / 1000)} minutes.\n`);
                     this.cancel(uuid, () => {
                         logger.warn(`Task ${uuid} timed out`);
@@ -366,8 +367,8 @@ class TaskManager{
 }
 
 module.exports = {
-    singleton: function(){ return taskManager; },
-    initialize: function(cb){ 
+    singleton: function () { return taskManager; },
+    initialize: function (cb) {
         taskManager = new TaskManager(cb);
     }
 };
