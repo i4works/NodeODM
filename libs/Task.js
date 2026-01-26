@@ -1235,8 +1235,7 @@ module.exports = class Task extends AbstractTask {
                 } else {
                     cb();
                 }
-            }
-            cb(null);
+            } else cb();
         } else {
             cb(new Error("Task cannot be restarted"));
         }
