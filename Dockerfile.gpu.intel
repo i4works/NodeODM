@@ -1,4 +1,5 @@
-FROM opendronemap/nodeodm:gpu
+ARG FROM_REPO=opendronemap/nodeodm:gpu
+FROM ${FROM_REPO}
 
 EXPOSE 3000
 

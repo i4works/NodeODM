@@ -1,32 +1,33 @@
-FROM opendronemap/odm:gpu
-MAINTAINER Piero Toffanin <pt@masseranolabs.com>
+ARG FROM_REPO=opendronemap/odm:3.6.2-gpu
+FROM ${FROM_REPO}
+LABEL org.opencontainers.image.authors="OpenDroneMap Developers <maintainers@opendronemap.org>"
 
 EXPOSE 3000
 
 USER root
 
+RUN mkdir /var/www
+
+WORKDIR "/var/www"
+COPY . /var/www
+
 ENV NVM_DIR /usr/local/nvm
 ENV NODE_VERSION 14
 
+# install_deps.sh needs the tree (COPY above) and nvm's node/npm in the same RUN.
 RUN bash install_deps.sh && \
     ln -s /code/SuperBuild/install/bin/untwine /usr/bin/untwine && \
     ln -s /code/SuperBuild/install/bin/entwine /usr/bin/entwine && \
     ln -s /code/SuperBuild/install/bin/pdal /usr/bin/pdal && \
     ln -s /var/www/node.sh /usr/bin/node
 
-RUN echo /usr/local/cuda-11.2/compat >> /etc/ld.so.conf.d/989_cuda-11.conf && ldconfig
-
-RUN mkdir /var/www
-
-WORKDIR "/var/www"
-RUN useradd -m -d "/home/odm" -s /bin/bash odm
-COPY --chown=odm:odm . /var/www
-
-RUN npm install --production && mkdir -p tmp && node index.js --powercycle
-
-RUN chown -R odm:odm /var/www
-RUN chown -R odm:odm /code
+RUN useradd -m -d "/home/odm" -s /bin/bash odm && \
+    chown -R odm:odm /var/www && \
+    chown -R odm:odm /code
 
 USER odm
+
+# Smoke test as the runtime user, with the command ENTRYPOINT runs.
+RUN mkdir -p tmp && /usr/bin/node /var/www/index.js --powercycle
 
 ENTRYPOINT ["/usr/bin/node", "/var/www/index.js"]

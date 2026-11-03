@@ -1,0 +1,85 @@
+name: Docker GPU Image
+
+on:
+  push:
+    branches:
+    - master
+    tags:
+    - v*
+  # Limited to the paths that can break these images and are not covered by
+  # the CPU image's PR build.
+  pull_request:
+    paths:
+    - Dockerfile.gpu
+    - Dockerfile.gpu.intel
+    - install_deps.sh
+    - node.sh
+    - .github/workflows/docker-gpu.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: docker-gpu-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gpu:
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    with:
+      output: image
+      # Only refs that produce tags may push: a workflow_dispatch on any other
+      # branch would otherwise push untagged digests and then fail.
+      push: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
+      file: ./Dockerfile.gpu
+      platforms: linux/amd64
+      set-meta-labels: true
+      meta-images: opendronemap/nodeodm
+      meta-flavor: |
+        latest=false
+        suffix=-gpu
+      # :edge-gpu on master; :<version>-gpu and :gpu on a v* tag. The '-'
+      # guard keeps prereleases (v3.7.0-rc1) off :gpu.
+      meta-tags: |
+        type=edge,branch=master
+        type=semver,pattern={{version}}
+        type=ref,event=pr
+        type=raw,value=gpu,suffix=,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    secrets:
+      registry-auths: |
+        - registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # The Intel image layers OpenCL packages on the GPU image built above, so it
+  # builds from that image's digest rather than racing the :gpu tag. It only
+  # runs on refs that pushed a GPU image.
+  gpu-intel:
+    needs: gpu
+    if: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    with:
+      output: image
+      push: true
+      file: ./Dockerfile.gpu.intel
+      platforms: linux/amd64
+      build-args: |
+        FROM_REPO=opendronemap/nodeodm@${{ needs.gpu.outputs.digest }}
+      set-meta-labels: true
+      meta-images: opendronemap/nodeodm
+      meta-flavor: |
+        latest=false
+        suffix=-gpu-intel
+      # :edge-gpu-intel on master; :<version>-gpu-intel and :gpu-intel on a
+      # v* tag. The pre-3.6.2 :gpu.intel spelling is not carried forward.
+      meta-tags: |
+        type=edge,branch=master
+        type=semver,pattern={{version}}
+        type=raw,value=gpu-intel,suffix=,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    secrets:
+      registry-auths: |
+        - registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
