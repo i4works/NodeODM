@@ -10,7 +10,7 @@ if [ -z "$NODE_VERSION" ]; then
 fi
 
 for i in {1..20}; do
-  apt-get update && apt-get install -y curl gpg-agent \
+  apt-get update && apt-get install -y --no-install-recommends curl gpg-agent \
     libqt5gui5t64 \
     libqt5core5t64 \
     libqt5widgets5t64 \
@@ -27,7 +27,7 @@ nvm install $NODE_VERSION
 nvm alias default $NODE_VERSION
 
 for i in {1..20}; do
-  apt-get install -y unzip p7zip-full && npm install -g nodemon && break
+  apt-get install -y --no-install-recommends unzip p7zip-full && npm install -g nodemon && break
   echo "apt-get failed, retrying... ($i/20)"
   sleep 30
 done

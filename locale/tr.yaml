@@ -1,0 +1,128 @@
+# OpenSfM Quality Report — Turkish
+
+# Section headers
+dataset_summary: "Veri Seti Özeti"
+processing_summary: "İşlem Özeti"
+features_details: "Öznitelik Detayları"
+reconstruction_details: "Yeniden Yapılandırma Detayları"
+tracks_details: "İz Detayları"
+camera_models_details: "Kamera Modeli Detayları"
+rig_cameras_details: "Kamera Rig Detayları"
+overlap_summary: "Örtüşme Özeti"
+gps_gcp_errors_details: "GPS/YKN/3D Hata Detayları"
+gcp_details: "Yer Kontrol Noktası Hata Oranları"
+orientation_details: "Yönelim Hata Detayları"
+processing_time_details: "İşlem Süresi Detayları"
+digital_surface_model: "Sayısal Yüzey Modeli"
+orthophoto: "Ortofoto"
+
+# Title
+quality_report: "Kalite Raporu"
+
+# Dataset summary row labels
+dataset: "Veri Seti"
+date: "Tarih"
+area_covered: "Kapsanan Alan"
+processing_time: "İşlem Süresi"
+capture_start: "Çekim Başlangıcı"
+capture_end: "Çekim Bitişi"
+
+# Processing summary row labels
+reconstructed_images: "Yeniden Yapılandırılan Görüntüler"
+reconstructed_points: "Yeniden Yapılandırılan Noktalar"
+reconstructed_points_sparse: "Yeniden Yapılandırılan Noktalar (Seyrek)"
+reconstructed_points_dense: "Yeniden Yapılandırılan Noktalar (Yoğun)"
+average_track_length: "Ortalama İz Uzunluğu"
+camera_calibration_deviation: "Kamera Kalibrasyon Sapması"
+front_overlap: "Boyuna Örtüşme"
+side_overlap: "Enine Örtüşme"
+ground_sampling_distance: "Yer Örnekleme Aralığı (GSD)"
+reconstructed_components: "Yeniden Yapılandırılan Bileşenler"
+geographic_referencing: "Coğrafi Referanslama"
+gcp_coordinate_system: "YKN Koordinat Sistemi"
+gps_error: "GPS Hatası"
+gcp_error: "YKN Hatası"
+alignment: "Hizalama"
+alignment_errors: "Hizalama Hataları"
+
+# Reconstruction details
+reprojection_error: "Yeniden İzdüşüm Hatası (norm / px / açısal)"
+average_track_length_gt2: "Ortalama İz Uzunluğu (> 2)"
+
+# Overlap
+front_overlap_mean: "Boyuna Örtüşme (ortalama)"
+side_overlap_mean: "Enine Örtüşme (ortalama)"
+
+# GPS/GCP errors table
+role: "Rol"
+control: "Kontrol"
+checkpoint: "Denetim Noktası"
+mean: "Ortalama"
+sigma: "Sigma"
+input_sigma: "Giriş Sigması"
+rms_error: "RMS Hatası"
+x_error_distance: "Hata X ({unit})"
+y_error_distance: "Hata Y ({unit})"
+z_error_distance: "Hata Z ({unit})"
+total: "Toplam"
+input_std_dev_distance: "Giriş Standart Sapması ({unit})"
+horizontal_accuracy_ce90: "Yatay Doğruluk CE90"
+vertical_accuracy_le90: "Düşey Doğruluk LE90"
+absolute: "Mutlak"
+relative: "Bağıl"
+gps_bias: "GPS Sapması"
+scale: "Ölçek"
+translation: "Öteleme"
+rotation: "Dönü"
+
+# GCP details table
+gcp_id: "ID"
+x_error_short: "Hata X ({unit})"
+y_error_short: "Hata Y ({unit})"
+z_error_short: "Hata Z ({unit})"
+inliers_total: "Uyuşan / Toplam"
+
+# Orientation errors
+component: "Bileşen"
+omega_error: "Omega Hatası (derece)"
+phi_error: "Phi Hatası (derece)"
+kappa_error: "Kappa Hatası (derece)"
+
+# Features table
+detected: "Tespit Edilen"
+reconstructed: "Yeniden Yapılandırılan"
+min: "Min."
+max: "Maks."
+
+# Camera models table
+initial: "Başlangıç"
+optimized: "Optimize Edilmiş"
+rel_diff_pct: "Bağıl Fark (%)"
+
+# Rig cameras columns
+translation_x: "Öteleme X"
+translation_y: "Öteleme Y"
+translation_z: "Öteleme Z"
+rotation_x: "Dönü X"
+rotation_y: "Dönü Y"
+rotation_z: "Dönü Z"
+
+# Tracks table
+length: "Uzunluk"
+count: "Sayı"
+
+# Units
+unit_meters: "metre"
+unit_feet: "feet"
+unit_seconds: "saniye"
+unit_seconds_short: "sn."
+unit_images: "görüntü"
+
+# Misc
+shots: "çekim"
+none: "Yok"
+gps: "GPS"
+gcp: "YKN"
+avg_focal_change: "ort. odak değişimi"
+similarity: "benzerlik"
+median: "Medyan"
