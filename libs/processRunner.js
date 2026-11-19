@@ -64,7 +64,17 @@ function makeRunner(command, args, requiredOptions = [], outputTestFile = null, 
 
         // Launch
         const env = utils.clone(process.env);
-        env.LD_LIBRARY_PATH = path.join(config.odm_path, "SuperBuild", "install", "lib");
+        const odmLibPath = path.join(config.odm_path, "SuperBuild", "install", "lib");
+        env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH
+            ? `${odmLibPath}:${process.env.LD_LIBRARY_PATH}`
+            : odmLibPath;
+        if (!env.PROJ_DATA) {
+            const projData = [
+                "/code/.pixi/envs/gpu-prod/share/proj",
+                "/code/.pixi/envs/prod/share/proj"
+            ].find(p => fs.existsSync(p));
+            if (projData) env.PROJ_DATA = projData;
+        }
 
         let cwd = undefined;
         if (options.cwd) cwd = options.cwd;
@@ -119,12 +129,6 @@ module.exports = {
         null,
         false),
 
-    runPotreeConverter: makeRunner("PotreeConverter", function(options) {
-        return [options.input, "-o", options.outDir];
-    }, ["input", "outDir"],
-        null,
-        false),
-
     runGenerateCog: makeRunner("rio", function(options) {
         const params = [
             "cogeo",
@@ -165,21 +169,9 @@ module.exports = {
         null,
         false),
 
-    runFixBB: makeRunner("lasinfo", function(options) {
-        return ['-i', options.inputFile, '-repair_bb'];
-    }, ['inputFile'],
-        null,
-        false),
-
     runClassify: makeRunner('pdal', (options) => {
         return ['translate', '-i', options.inputFile, '-o', options.inputFile, 'smrf', 'range', '--filters.range.limits=Classification[2:2]'];
     }, ['inputFile'],
-        null,
-        false),
-
-    runFindSrs: makeRunner('/usr/bin/node', options => {
-        return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];
-    }, ['inputFile', 'outputFile'],
         null,
         false),
 
@@ -198,6 +190,18 @@ module.exports = {
     runBundleAdjustment: makeRunner('/usr/bin/node', options => {
         return [path.join(__dirname, "..", "scripts", "runBA.js"), options.projectFolderPath];
     }, ['projectFolderPath'],
+        null,
+        false),
+
+    runFindSrs: makeRunner(process.execPath || '/usr/bin/node', options => {
+        return [path.join(__dirname, "..", "scripts", "findSrs.js"), options.inputFile, options.outputFile];
+    }, ['inputFile', 'outputFile'],
+        null,
+        false),
+
+    runEntwine: makeRunner("entwine", options => {
+        return ["build", "-i", options.inputFile, "-o", options.outputFolder];
+    }, ['inputFile', 'outputFolder'],
         null,
         false)
 };

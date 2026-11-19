@@ -518,7 +518,7 @@ module.exports = class Task extends AbstractTask {
                 'odm_georeferencing', 'odm_texturing',
                 'odm_dem/dsm.tif', 'odm_dem/dtm.tif', 'dsm_tiles', 'dtm_tiles',
                 'odm_dem/dsm.euclideand.tif', 'odm_dem/dtm.euclideand.tif',
-                'orthophoto_tiles', 'potree_pointcloud', 'entwine_pointcloud',
+                'orthophoto_tiles', 'entwine_pointcloud',
                 '3d_tiles',
                 'images.json', 'cameras.json',
                 'task_output.txt', 'log.json',
@@ -615,16 +615,8 @@ module.exports = class Task extends AbstractTask {
                 return;
             }
 
-            if (this.projectId && allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz')) {
-                // pointcloud output is wanted, run necessary post processing
-
-                // sometimes output pointcloud has some points that are not in the bounding box of the header. This should fix those.
-                tasks.push(this.runPostProcess('pointcloud_pre'));
-
-                // convert
-                tasks.push(this.runPostProcess('pointcloud'));
-
-                // writes coord info into metadata.json
+            if (this.projectId && (allPaths.includes('odm_georeferencing') || allPaths.includes('odm_georeferencing/odm_georeferenced_model.laz') || allPaths.includes('entwine_pointcloud'))) {
+                // write SRS/projection into ept.json
                 tasks.push(this.runPostProcess('pointcloud_post'));
             }
 
@@ -692,9 +684,9 @@ module.exports = class Task extends AbstractTask {
                                 this.getProjectFolderPath(),
                                 config.s3Bucket,
                                 `project/${this.projectId}/process/${this.uuid}`,
-                                ['potree_pointcloud'],
+                                ['entwine_pointcloud'],
                                 (err) => {
-                                    if (!err) this.output.push('Done uploading potree_pointcloud, continuing');
+                                    if (!err) this.output.push('Done uploading entwine_pointcloud, continuing');
                                     done(err);
                                 },
                                 (output) => this.output.push(output)
@@ -1134,23 +1126,10 @@ module.exports = class Task extends AbstractTask {
         let runner;
 
         switch (type) {
-            case 'pointcloud_pre':
-                opts = {
-                    inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz')
-                };
-                runner = processRunner.runFixBB;
-                break;
-            case 'pointcloud':
-                opts = {
-                    input: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
-                    outDir: path.join(this.getProjectFolderPath(), 'potree_pointcloud')
-                };
-                runner = processRunner.runPotreeConverter;
-                break;
-            case "pointcloud_post":
+            case 'pointcloud_post':
                 opts = {
                     inputFile: path.join(this.getProjectFolderPath(), 'odm_georeferencing', 'odm_georeferenced_model.laz'),
-                    outputFile: path.join(this.getProjectFolderPath(), 'potree_pointcloud', 'metadata.json')
+                    outputFile: path.join(this.getProjectFolderPath(), 'entwine_pointcloud', 'ept.json')
                 };
                 runner = processRunner.runFindSrs;
                 break;
@@ -1181,6 +1160,9 @@ module.exports = class Task extends AbstractTask {
         }
 
         return (done) => {
+            if (typeof runner !== 'function') {
+                return done();
+            }
             this.runningProcesses.push(
                 runner(opts,
                     (err, code, _) => {

@@ -412,7 +412,7 @@ app.get("/task/list", authCheck, (req, res) => {
 /** @swagger
  *  /task/singular/new:
  *    post:
- *      description: Posts a singular process task (potreeconverter, generate-cog, etc.)
+ *      description: Posts a singular process task (generate-cog, etc.)
  *      tags: [task]
  *      consumes:
  *        - multipart/form-data

@@ -202,7 +202,7 @@ module.exports = class SingularTask extends AbstractTask {
                 case 'pointcloud': {
                     const { inputResourceId, outputResourceId, fileName, classify } = parsedOptions;
 
-                    taskOutputPath = `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}/task_output.txt`;
+                    taskOutputPath = `project/${this.projectId}/resource/entwine_pointcloud/${outputResourceId}/task_output.txt`;
 
                     tasks.push(cb => {
                         this.output.push('downloading pointcloud...')
@@ -216,21 +216,20 @@ module.exports = class SingularTask extends AbstractTask {
                         )
                     });
 
-                    tasks.push(this.runProcess("pointcloud_pre", { fileName }));
                     if (classify === "ground") tasks.push(this.runProcess("pointcloud_classify", { fileName }));
                     tasks.push(this.runProcess("pointcloud", { fileName }));
                     tasks.push(this.runProcess("pointcloud_post", { fileName }));
 
                     tasks.push((cb) => {
-                        const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
+                        const entwinePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "entwine_pointcloud"));
 
                         S3.uploadPaths(
-                            path.join(this.getProjectFolderPath(), "potree_pointcloud"),
+                            path.join(this.getProjectFolderPath(), "entwine_pointcloud"),
                             config.s3Bucket,
-                            `project/${this.projectId}/resource/potree_pointcloud/${outputResourceId}`,
-                            potreePointcloudFolderPaths,
+                            `project/${this.projectId}/resource/entwine_pointcloud/${outputResourceId}`,
+                            entwinePointcloudFolderPaths,
                             (err) => {
-                                if (!err) this.output.push('Done uploading potree_pointcloud, finalizing');
+                                if (!err) this.output.push('Done uploading entwine_pointcloud, finalizing');
                                 cb(err);
                             },
                             (output) => this.output.push(output)
@@ -380,15 +379,15 @@ module.exports = class SingularTask extends AbstractTask {
                     });
 
                     tasks.push((cb) => {
-                        const potreePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "potree_pointcloud"));
+                        const entwinePointcloudFolderPaths = fs.readdirSync(path.join(this.getProjectFolderPath(), "entwine_pointcloud"));
 
                         S3.uploadPaths(
-                            path.join(this.getProjectFolderPath(), "potree_pointcloud"),
+                            path.join(this.getProjectFolderPath(), "entwine_pointcloud"),
                             config.s3Bucket,
-                            `project/${this.projectId}/resource/potree_pointcloud/${outputResourcePotreePointcloudId}`,
-                            potreePointcloudFolderPaths,
+                            `project/${this.projectId}/resource/entwine_pointcloud/${outputResourcePotreePointcloudId}`,
+                            entwinePointcloudFolderPaths,
                             (err) => {
-                                if (!err) this.output.push('Done uploading potree_pointcloud, finalizing');
+                                if (!err) this.output.push('Done uploading entwine_pointcloud, finalizing');
                                 cb(err);
                             },
                             (output) => this.output.push(output)
@@ -453,31 +452,25 @@ module.exports = class SingularTask extends AbstractTask {
         let runner;
 
         switch (type) {
-            case "pointcloud_pre":
+            case "pointcloud":
                 opts = {
-                    inputFile: path.join(this.getProjectFolderPath(), options.fileName)
+                    inputFile: path.join(this.getProjectFolderPath(), options.fileName),
+                    outputFolder: path.join(this.getProjectFolderPath(), "entwine_pointcloud")
                 };
-                runner = processRunner.runFixBB;
+                runner = processRunner.runEntwine;
+                break;
+            case "pointcloud_post":
+                opts = {
+                    inputFile: path.join(this.getProjectFolderPath(), options.fileName),
+                    outputFile: path.join(this.getProjectFolderPath(), "entwine_pointcloud", "ept.json")
+                };
+                runner = processRunner.runFindSrs;
                 break;
             case "pointcloud_classify":
                 opts = {
                     inputFile: path.join(this.getProjectFolderPath(), options.fileName)
                 };
                 runner = processRunner.runClassify;
-                break;
-            case "pointcloud":
-                opts = {
-                    input: path.join(this.getProjectFolderPath(), options.fileName),
-                    outDir: path.join(this.getProjectFolderPath(), "potree_pointcloud")
-                };
-                runner = processRunner.runPotreeConverter;
-                break;
-            case "pointcloud_post":
-                opts = {
-                    inputFile: path.join(this.getProjectFolderPath(), options.fileName),
-                    outputFile: path.join(this.getProjectFolderPath(), 'potree_pointcloud', 'metadata.json')
-                };
-                runner = processRunner.runFindSrs;
                 break;
             case "orthophoto":
                 opts = {
@@ -528,6 +521,9 @@ module.exports = class SingularTask extends AbstractTask {
         }
 
         return (done) => {
+            if (typeof runner !== 'function') {
+                return done();
+            }
             this.runningProcesses.push(
                 runner(opts,
                     (err, code, _) => {

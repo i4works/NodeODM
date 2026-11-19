@@ -3,10 +3,8 @@
 # This file executes the post-processing steps for a task after a dataset 
 # has been processed by OpenDroneMap. It generates secondary outputs.
 # 
-# As a general rule, post-processing commands should never fail the task 
-#(for example, if a point cloud could not be generated, the PotreeConverter 
-# step will fail, but the script should still continue processing the rest and
-# return a 0 code). The idea is to post-process as much as possible, knowing 
+# As a general rule, post-processing commands should never fail the task.
+# The idea is to post-process as much as possible, knowing 
 # that some parts might fail and that partial results should be returned in such cases.
 
 if [ -z "$1" ]; then
@@ -19,7 +17,7 @@ script_path=$(realpath $(dirname "$0"))
 cd "$script_path/../$1"
 echo "Postprocessing: $(pwd)"
 
-# Generate point cloud (if entwine, untwine or potreeconverter is available)
+# Generate point cloud (if entwine or untwine is available)
 pointcloud_input_path=""
 for path in "odm_georeferencing/odm_georeferenced_model.laz" \
             "odm_georeferencing/odm_georeferenced_model.las" \
@@ -74,15 +72,6 @@ if [ ! -z "$pointcloud_input_path" ]; then
         # Cleanup
         if [ -e "entwine_pointcloud-tmp" ]; then
             rm -fr "entwine_pointcloud-tmp"
-        fi
-    fi
-
-    if [ ! -e "entwine_pointcloud" ]; then
-        echo "Checking if PotreeConverter is available..."
-        if hash PotreeConverter 2>/dev/null; then
-            PotreeConverter "$pointcloud_input_path" -o potree_pointcloud --overwrite -a RGB CLASSIFICATION
-        else
-            echo "PotreeConverter is not installed, will skip generation of Potree point cloud"
         fi
     fi
 else
