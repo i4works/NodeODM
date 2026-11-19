@@ -104,44 +104,78 @@ function fromConfigFile(prop, defaultValue){
 	return utils.get(configFile, prop, defaultValue);
 }
 
+function fromEnv(name){
+	const val = process.env[name];
+	return (val !== undefined && val !== "") ? val : undefined;
+}
+
+function fromEnvBool(name){
+	const val = fromEnv(name);
+	if (val === undefined) return undefined;
+	const lower = val.trim().toLowerCase();
+	if (lower === "true" || lower === "1" || lower === "yes") return true;
+	if (lower === "false" || lower === "0" || lower === "no") return false;
+	return undefined;
+}
+
+function fromEnvInt(name){
+	const val = fromEnv(name);
+	if (val === undefined) return undefined;
+	const parsed = parseInt(val, 10);
+	return isNaN(parsed) ? undefined : parsed;
+}
+
+function fromEnvList(name){
+	const val = fromEnv(name);
+	if (val === undefined) return undefined;
+	return val.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function firstDefined(){
+	for (let i = 0; i < arguments.length; i++){
+		if (arguments[i] !== undefined) return arguments[i];
+	}
+	return undefined;
+}
+
 // Instance name - default name for this configuration
-config.instance = fromConfigFile("instance", 'node-OpenDroneMap');
-config.odm_path = argv.odm_path || fromConfigFile("odm_path", '/code');
+config.instance = firstDefined(fromEnv("INSTANCE"), fromConfigFile("instance", 'node-OpenDroneMap'));
+config.odm_path = firstDefined(argv.odm_path, fromEnv("ODM_PATH"), fromConfigFile("odm_path", '/code'));
 
 // Logging configuration
 config.logger = {};
-config.logger.level = argv.log_level || fromConfigFile("logger.level", 'info'); // What level to log at; info, verbose or debug are most useful. Levels are (npm defaults): silly, debug, verbose, info, warn, error.
-config.logger.maxFileSize = fromConfigFile("logger.maxFileSize", 1024 * 1024 * 100); // Max file size in bytes of each log file; default 100MB
-config.logger.maxFiles = fromConfigFile("logger.maxFiles", 10); // Max number of log files kept
-config.logger.logDirectory = fromConfigFile("logger.logDirectory", ''); // Set this to a full path to a directory - if not set logs will be written to the application directory.
+config.logger.level = firstDefined(argv.log_level, fromEnv("LOG_LEVEL"), fromConfigFile("logger.level", 'info')); // What level to log at; info, verbose or debug are most useful. Levels are (npm defaults): silly, debug, verbose, info, warn, error.
+config.logger.maxFileSize = firstDefined(fromEnvInt("LOG_MAX_FILE_SIZE"), fromConfigFile("logger.maxFileSize", 1024 * 1024 * 100)); // Max file size in bytes of each log file; default 100MB
+config.logger.maxFiles = firstDefined(fromEnvInt("LOG_MAX_FILES"), fromConfigFile("logger.maxFiles", 10)); // Max number of log files kept
+config.logger.logDirectory = firstDefined(fromEnv("LOG_DIRECTORY"), fromConfigFile("logger.logDirectory", '')); // Set this to a full path to a directory - if not set logs will be written to the application directory.
 
-config.port = (argv.port || argv.p || fromConfigFile("port", process.env.PORT || "auto"));
-config.deamon = argv.deamonize || argv.daemon || argv.d || fromConfigFile("daemon", false);
-config.parallelQueueProcessing = parseInt(argv.parallel_queue_processing || argv.q || fromConfigFile("parallelQueueProcessing", 1));
-config.cleanupTasksAfter = parseInt(argv.cleanup_tasks_after || fromConfigFile("cleanupTasksAfter", 2880));
-config.cleanupUploadsAfter = parseInt(argv.cleanup_uploads_after || fromConfigFile("cleanupUploadsAfter", 2880));
-config.test = argv.test || fromConfigFile("test", false);
-config.testSkipOrthophotos = argv.test_skip_orthophotos || fromConfigFile("testSkipOrthophotos", false);
-config.testSkipDems = argv.test_skip_dems || fromConfigFile("testSkipDems", false);
-config.testDropUploads = argv.test_drop_uploads || fromConfigFile("testDropUploads", false);
-config.testFailTasks = argv.test_fail_tasks || fromConfigFile("testFailTasks", false);
-config.testSeconds = parseInt(argv.test_seconds || fromConfigFile("testSeconds", 0));
-config.powercycle = argv.powercycle || fromConfigFile("powercycle", false);
-config.token = argv.token || fromConfigFile("token", "");
-config.authorizedIps = fromConfigFile("authorizedIps", []);
-config.maxImages = parseInt(argv.max_images || fromConfigFile("maxImages", "")) || null;
-config.webhook = argv.webhook || fromConfigFile("webhook", "");
-config.s3Endpoint = argv.s3_endpoint || fromConfigFile("s3Endpoint", "");
-config.s3Bucket = argv.s3_bucket || fromConfigFile("s3Bucket", "");
-config.s3ForcePathStyle = argv.s3_force_path_style || fromConfigFile("s3ForcePathStyle", false);
-config.s3AccessKey = argv.s3_access_key || fromConfigFile("s3AccessKey", process.env.AWS_ACCESS_KEY_ID || "")
-config.s3SecretKey = argv.s3_secret_key || fromConfigFile("s3SecretKey", process.env.AWS_SECRET_ACCESS_KEY || "")
-config.s3SignatureVersion = argv.s3_signature_version || fromConfigFile("s3SignatureVersion", "4")
-config.s3ACL = argv.s3_acl || fromConfigFile("s3_acl", "public-read")
-config.s3UploadEverything = argv.s3_upload_everything || fromConfigFile("s3UploadEverything", false);
-config.s3IgnoreSSL = argv.s3_ignore_ssl || fromConfigFile("s3IgnoreSSL", false);
-config.maxConcurrency = parseInt(argv.max_concurrency || fromConfigFile("maxConcurrency", 0));
-config.maxRuntime = parseInt(argv.max_runtime || fromConfigFile("maxRuntime", -1));
+config.port = firstDefined(argv.port, argv.p, fromEnv("PORT"), fromConfigFile("port", "auto"));
+config.deamon = firstDefined(argv.deamonize, argv.daemon, argv.d, fromEnvBool("DAEMON"), fromConfigFile("daemon", false));
+config.parallelQueueProcessing = parseInt(firstDefined(argv.parallel_queue_processing, argv.q, fromEnvInt("PARALLEL_QUEUE_PROCESSING"), fromConfigFile("parallelQueueProcessing", 1)));
+config.cleanupTasksAfter = parseInt(firstDefined(argv.cleanup_tasks_after, fromEnvInt("CLEANUP_TASKS_AFTER"), fromConfigFile("cleanupTasksAfter", 2880)));
+config.cleanupUploadsAfter = parseInt(firstDefined(argv.cleanup_uploads_after, fromEnvInt("CLEANUP_UPLOADS_AFTER"), fromConfigFile("cleanupUploadsAfter", 2880)));
+config.test = firstDefined(argv.test, fromEnvBool("TEST"), fromConfigFile("test", false));
+config.testSkipOrthophotos = firstDefined(argv.test_skip_orthophotos, fromEnvBool("TEST_SKIP_ORTHOPHOTOS"), fromConfigFile("testSkipOrthophotos", false));
+config.testSkipDems = firstDefined(argv.test_skip_dems, fromEnvBool("TEST_SKIP_DEMS"), fromConfigFile("testSkipDems", false));
+config.testDropUploads = firstDefined(argv.test_drop_uploads, fromEnvBool("TEST_DROP_UPLOADS"), fromConfigFile("testDropUploads", false));
+config.testFailTasks = firstDefined(argv.test_fail_tasks, fromEnvBool("TEST_FAIL_TASKS"), fromConfigFile("testFailTasks", false));
+config.testSeconds = parseInt(firstDefined(argv.test_seconds, fromEnvInt("TEST_SECONDS"), fromConfigFile("testSeconds", 0)));
+config.powercycle = firstDefined(argv.powercycle, fromEnvBool("POWERCYCLE"), fromConfigFile("powercycle", false));
+config.token = firstDefined(argv.token, fromEnv("TOKEN"), fromConfigFile("token", ""));
+config.authorizedIps = firstDefined(fromEnvList("AUTHORIZED_IPS"), fromConfigFile("authorizedIps", []));
+config.maxImages = parseInt(firstDefined(argv.max_images, fromEnvInt("MAX_IMAGES"), fromConfigFile("maxImages", ""))) || null;
+config.webhook = firstDefined(argv.webhook, fromEnv("WEBHOOK"), fromConfigFile("webhook", ""));
+config.s3Endpoint = firstDefined(argv.s3_endpoint, fromEnv("S3_ENDPOINT"), fromConfigFile("s3Endpoint", ""));
+config.s3Bucket = firstDefined(argv.s3_bucket, fromEnv("S3_BUCKET"), fromConfigFile("s3Bucket", ""));
+config.s3ForcePathStyle = firstDefined(argv.s3_force_path_style, fromEnvBool("S3_FORCE_PATH_STYLE"), fromConfigFile("s3ForcePathStyle", false));
+config.s3AccessKey = firstDefined(argv.s3_access_key, fromEnv("S3_ACCESS_KEY"), fromEnv("AWS_ACCESS_KEY_ID"), fromConfigFile("s3AccessKey", ""));
+config.s3SecretKey = firstDefined(argv.s3_secret_key, fromEnv("S3_SECRET_KEY"), fromEnv("AWS_SECRET_ACCESS_KEY"), fromConfigFile("s3SecretKey", ""));
+config.s3SignatureVersion = firstDefined(argv.s3_signature_version, fromEnv("S3_SIGNATURE_VERSION"), fromConfigFile("s3SignatureVersion", "4"));
+config.s3ACL = firstDefined(argv.s3_acl, fromEnv("S3_ACL"), fromConfigFile("s3_acl", "public-read"));
+config.s3UploadEverything = firstDefined(argv.s3_upload_everything, fromEnvBool("S3_UPLOAD_EVERYTHING"), fromConfigFile("s3UploadEverything", false));
+config.s3IgnoreSSL = firstDefined(argv.s3_ignore_ssl, fromEnvBool("S3_IGNORE_SSL"), fromConfigFile("s3IgnoreSSL", false));
+config.maxConcurrency = parseInt(firstDefined(argv.max_concurrency, fromEnvInt("MAX_CONCURRENCY"), fromConfigFile("maxConcurrency", 0)));
+config.maxRuntime = parseInt(firstDefined(argv.max_runtime, fromEnvInt("MAX_RUNTIME"), fromConfigFile("maxRuntime", -1)));
 
 // Detect 7z availability
 config.has7z = spawnSync(apps.sevenZ, ['--help']).status === 0;
