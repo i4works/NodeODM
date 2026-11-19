@@ -174,9 +174,17 @@ module.exports = {
         if (os.platform() === "win32"){
             getOdmOptions("helpers\\odm_python.bat", done);
         }else{
-            // Try Python3 first
-            getOdmOptions("python3", (err, result) => {
-                if (err) getOdmOptions("python", done);
+            const pixiPy = [
+                "/code/.pixi/envs/gpu-prod/bin/python",
+                "/code/.pixi/envs/prod/bin/python"
+            ].find(p => fs.existsSync(p));
+            const pyCmd = pixiPy || "python3";
+            // Try pixi python or python3 first
+            getOdmOptions(pyCmd, (err, result) => {
+                if (err) getOdmOptions("python3", (err2, result2) => {
+                    if (err2) getOdmOptions("python", done);
+                    else done(null, result2);
+                });
                 else done(null, result);
             });
         }
